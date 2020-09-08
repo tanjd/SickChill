@@ -1,42 +1,14 @@
-# coding=UTF-8
-# Author: Dennis Lutter <lad1337@gmail.com>
-# URL: https://sickchill.github.io
-#
-# This file is part of SickChill.
-#
-# SickChill is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# SickChill is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
-
-
 """
 Test snatching
 """
 
-import os.path
-import sys
 import unittest
 
-sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib')))
-sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-from sickbeard.tv import TVEpisode, TVShow
-import sickbeard
-import sickbeard.search as search
-import sickbeard.common as common
-import tests.test_lib as test
-
-import six
-
+import sickchill.oldbeard.providers
+from sickchill import settings
+from sickchill.oldbeard import common as common, search as search
+from sickchill.tv import TVEpisode, TVShow
+from tests import test_lib as test
 
 TESTS = {
     "Dexter": {"a": 1, "q": common.HD, "s": 5, "e": [7], "b": 'Dexter.S05E07.720p.BluRay.X264-REWARD', "i": ['Dexter.S05E07.720p.BluRay.X264-REWARD', 'Dexter.S05E07.720p.X264-REWARD']},
@@ -62,7 +34,7 @@ def _create_fake_xml(items):
 search_items = []
 
 
-class SearchTest(test.SickbeardTestDBCase):
+class SearchTest(test.SickChillTestDBCase):
     """
     Perform search tests
     """
@@ -94,11 +66,11 @@ class SearchTest(test.SickbeardTestDBCase):
         :return:
         """
 
-        for provider in sickbeard.providers.sortedProviderList():
+        for provider in sickchill.oldbeard.providers.sortedProviderList():
             provider.get_url = self._fake_get_url
             provider.is_active = self._fake_is_active
 
-        super(SearchTest, self).__init__(something)
+        super().__init__(something)
 
 
 def generator(tvdb_id, show_name, cur_data, force_search):
@@ -121,7 +93,7 @@ def generator(tvdb_id, show_name, cur_data, force_search):
         show.name = show_name
         show.quality = cur_data["q"]
         show.saveToDB()
-        sickbeard.showList.append(show)
+        settings.showList.append(show)
         episode = None
 
         for epNumber in cur_data["e"]:
@@ -144,7 +116,7 @@ if __name__ == '__main__':
     # create the test methods
     cur_tvdb_id = 1
     for forceSearch in (True, False):
-        for name, data in six.iteritems(TESTS):
+        for name, data in TESTS.items():
             if not data["a"]:
                 continue
             filename = name.replace(' ', '_')

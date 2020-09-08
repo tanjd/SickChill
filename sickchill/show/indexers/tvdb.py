@@ -1,40 +1,16 @@
-# coding=utf-8
-# Author: Dustyn Gibson <miigotu@gmail.com>
-# URL: https://sickchill.github.io
-#
-# This file is part of SickChill.
-#
-# SickChill is free software: you can redistribute it and/or modify
-# it under the terms of the GNU General Public License as published by
-# the Free Software Foundation, either version 3 of the License, or
-# (at your option) any later version.
-#
-# SickChill is distributed in the hope that it will be useful,
-# but WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-# GNU General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
-from __future__ import absolute_import, print_function, unicode_literals
-
-# Stdlib Imports
-import cgi
+import html
 import json
 import re
 import traceback
 
-# Third Party Imports
 import tvdbsimple
 from requests.exceptions import HTTPError
 
-# First Party Imports
-# from sickbeard import logger
-import sickbeard
-from sickbeard import logger
-from sickbeard.tv import TVEpisode
+# from sickchill import logger
+import sickchill.start
+from sickchill import logger, settings
+from sickchill.tv import TVEpisode
 
-# Local Folder Imports
 from .base import Indexer
 from .wrappers import ExceptionDecorator
 
@@ -48,7 +24,7 @@ class TVDB(Indexer):
         self.show_url = 'https://thetvdb.com/?tab=series&id='
         self.base_url = 'https://thetvdb.com/api/%(apikey)s/series/'
         self.icon = 'images/indexers/thetvdb16.png'
-        tvdbsimple.KEYS.API_KEY = self.api_key
+        tvdbsimple.keys.API_KEY = self.api_key
         self._search = tvdbsimple.search.Search().series
         self._series = tvdbsimple.Series
         self.series_episodes = tvdbsimple.Series_Episodes
@@ -114,7 +90,7 @@ class TVDB(Indexer):
 
         return result
 
-    @ExceptionDecorator()
+    @ExceptionDecorator(default_return=list())
     def search(self, name, language=None, exact=False, indexer_id=False):
         """
         :param name: Show name to search for
@@ -125,16 +101,16 @@ class TVDB(Indexer):
         """
         language = language or self.language
         result = []
-        if re.match(r'^t?t?\d{7,8}$', str(name)) or re.match(r'^\d{6}$', str(name)):
+        if re.match(r'^t?t?\d{7,8}$', str(name)) or re.match(r'^\d{6}$', name):
             try:
                 if re.match(r'^t?t?\d{7,8}$', str(name)):
-                    result = self._search(imdbId='tt{}'.format(name.strip('t')), language=language)
+                    result = self._search(imdbId=f'tt{name.strip("t")}', language=language)
                 elif re.match(r'^\d{6}$', str(name)):
                     series = self._series(name, language=language)
                     if series:
                         result = [series.info(language)]
             except HTTPError:
-                pass
+                logger.exception(traceback.format_exc())
         else:
             # Name as provided (usually from nfo)
             names = [name]
@@ -156,7 +132,7 @@ class TVDB(Indexer):
                     if result:
                         break
                 except HTTPError:
-                    pass
+                    logger.exception(traceback.format_exc())
 
         return result
 
@@ -181,15 +157,14 @@ class TVDB(Indexer):
         location = location.strip()
         if not location:
             return location
-        return 'https://artworks.thetvdb.com/banners/{path}'.format(path=location)
+        return f'https://artworks.thetvdb.com/banners/{re.sub(r"^_cache/", "", location)}'
 
     @ExceptionDecorator(default_return='', catch=(HTTPError, KeyError), image_api=True)
-    def __call_images_api(self, show, thumb, keyType, subKey=None, lang=None):
+    def __call_images_api(self, show, thumb, keyType, subKey=None, lang=None, multiple=False):
         api_results = self.series_images(show.indexerid, lang or show.lang, keyType=keyType, subKey=subKey)
         images = getattr(api_results, keyType)(lang or show.lang)
         images = sorted(images, key=lambda img: img['ratingsInfo']['average'], reverse=True)
-        # return self.complete_image_url(images[0][('fileName', 'thumbnail')[thumb]])
-        return self.complete_image_url(images[0]['fileName'])
+        return [self.complete_image_url(image['fileName']) for image in images] if multiple else self.complete_image_url(images[0]['fileName'])
 
     @staticmethod
     @ExceptionDecorator()
@@ -198,20 +173,20 @@ class TVDB(Indexer):
             series.actors(series.language)
         return series.actors
 
-    def series_poster_url(self, show, thumb=False):
-        return self.__call_images_api(show, thumb, 'poster')
+    def series_poster_url(self, show, thumb=False, multiple=False):
+        return self.__call_images_api(show, thumb, 'poster', multiple=multiple)
 
-    def series_banner_url(self, show, thumb=False):
-        return self.__call_images_api(show, thumb, 'series')
+    def series_banner_url(self, show, thumb=False, multiple=False):
+        return self.__call_images_api(show, thumb, 'series', multiple=multiple)
 
-    def series_fanart_url(self, show, thumb=False):
-        return self.__call_images_api(show, thumb, 'fanart')
+    def series_fanart_url(self, show, thumb=False, multiple=False):
+        return self.__call_images_api(show, thumb, 'fanart', multiple=multiple)
 
-    def season_poster_url(self, show, season, thumb=False):
-        return self.__call_images_api(show, thumb, 'season', season)
+    def season_poster_url(self, show, season, thumb=False, multiple=False):
+        return self.__call_images_api(show, thumb, 'season', season, multiple=multiple)
 
-    def season_banner_url(self, show, season, thumb=False):
-        return self.__call_images_api(show, thumb, 'seasonwide', season)
+    def season_banner_url(self, show, season, thumb=False, multiple=False):
+        return self.__call_images_api(show, thumb, 'seasonwide', season, multiple=multiple)
 
     @ExceptionDecorator(default_return='', catch=(HTTPError, KeyError, TypeError))
     def episode_image_url(self, episode):
@@ -219,31 +194,32 @@ class TVDB(Indexer):
 
     def episode_guide_url(self, show):
         # https://forum.kodi.tv/showthread.php?tid=323588
-        data = cgi.escape(json.dumps({'apikey': self.api_key, 'id': show.indexerid}), True).replace(' ', '')
+        data = html.escape(json.dumps({'apikey': self.api_key, 'id': show.indexerid}), True).replace(' ', '')
         return tvdbsimple.base.TVDB(key=self.api_key)._get_complete_url('login') + '?' + data + '|Content-Type=application/json'
 
     def get_favorites(self):
         results = []
-        if not (sickbeard.TVDB_USER and sickbeard.TVDB_USER_KEY):
+        if not (settings.TVDB_USER and settings.TVDB_USER_KEY):
             return results
 
-        user = tvdbsimple.User(sickbeard.TVDB_USER, sickbeard.TVDB_USER_KEY)
+        user = tvdbsimple.User(settings.TVDB_USER, settings.TVDB_USER_KEY)
         for tvdbid in user.favorites():
             results.append(self.get_series_by_id(tvdbid))
 
         return results
 
-    def test_user_key(self, user, key):
+    @staticmethod
+    def test_user_key(user, key):
         user_object = tvdbsimple.User(user, key)
         try:
             user_object.info()
         except Exception:
-            logger.log(traceback.format_exc(), logger.ERROR)
+            logger.exception(traceback.format_exc())
             return False
 
-        sickbeard.TVDB_USER = user
-        sickbeard.TVDB_USER_KEY = key
+        settings.TVDB_USER = user
+        settings.TVDB_USER_KEY = key
 
-        sickbeard.save_config()
+        sickchill.start.save_config()
 
         return True
