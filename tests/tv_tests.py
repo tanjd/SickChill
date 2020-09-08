@@ -1,15 +1,39 @@
+# coding=UTF-8
+# Author: Dennis Lutter <lad1337@gmail.com>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+
 """
 Test tv
 """
 
+import os.path
+import sys
 import unittest
 
-from sickchill import settings
-from sickchill.tv import TVEpisode, TVShow
-from tests import test_lib as test
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib')))
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from sickbeard.tv import TVEpisode, TVShow
+import sickbeard
+import tests.test_lib as test
 
 
-class TVShowTests(test.SickChillTestPostProcessorCase):
+class TVShowTests(test.SickbeardTestDBCase):
     """
     Test tv shows
     """
@@ -17,62 +41,51 @@ class TVShowTests(test.SickChillTestPostProcessorCase):
         """
         Set up tests
         """
-        super().setUp()
+        super(TVShowTests, self).setUp()
+        sickbeard.showList = []
 
     def test_init_indexerid(self):
         """
         test init indexer id
         """
-        self.show.loadFromDB()
-        self.assertEqual(self.show.indexerid, 1)
+        show = TVShow(1, 1, "en")
+        self.assertEqual(show.indexerid, 1)
 
     def test_change_indexerid(self):
         """
         test change indexer id
         """
-        self.show.loadFromDB()
-        self.assertEqual(self.show.indexerid, 1)
+        show = TVShow(1, 257655, "en")
+        show.name = "show name"
+        show.network = "cbs"
+        show.genre = ["crime"]
+        show.runtime = 40
+        show.status = "Ended"
+        show.default_ep_status = "5"
+        show.airs = "monday"
+        show.startyear = 1987
 
-        self.show.indexerid = 295759
-        self.show.saveToDB()
-        self.show.loadFromDB()
+        show.saveToDB()
+        show.loadFromDB()
 
-        self.assertEqual(self.show.indexerid, 295759)
+        show.indexerid = 295759
+        show.saveToDB()
+        show.loadFromDB()
+
+        self.assertEqual(show.indexerid, 295759)
 
     def test_set_name(self):
         """
         test set name
         """
-        self.show.name = "newName"
-
-        self.show.saveToDB()
-        self.show.loadFromDB()
-        self.assertEqual(self.show.name, "newName")
-        self.assertEqual(self.show.show_name, "newName")
-
-        self.show.show_name = "show_name"
-
-        self.show.saveToDB()
-        self.show.loadFromDB()
-        self.assertEqual(self.show.name, "show_name")
-
-    def test_show_with_custom_name(self):
-        """
-        test set custom name
-        """
-        self.show.name = "show name"
-        self.show.show_name = "show name"
-        self.show.custom_name = "newName"
-        self.show.saveToDB()
-        self.show.loadFromDB()
-
-        self.assertEqual(self.show.show_name, "show name")
-
-        self.assertEqual(self.show.custom_name, "newName")
-        self.assertEqual(self.show.name, "newName")
+        show = TVShow(1, 1, "en")
+        show.name = "newName"
+        show.saveToDB()
+        show.loadFromDB()
+        self.assertEqual(show.name, "newName")
 
 
-class TVEpisodeTests(test.SickChillTestDBCase):
+class TVEpisodeTests(test.SickbeardTestDBCase):
     """
     Test tv episode
     """
@@ -80,8 +93,8 @@ class TVEpisodeTests(test.SickChillTestDBCase):
         """
         Set up
         """
-        super().setUp()
-        settings.showList = []
+        super(TVEpisodeTests, self).setUp()
+        sickbeard.showList = []
 
     def test_init_empty_db(self):
         """
@@ -95,7 +108,7 @@ class TVEpisodeTests(test.SickChillTestDBCase):
         self.assertEqual(episode.name, "asdasdasdajkaj")
 
 
-class TVTests(test.SickChillTestDBCase):
+class TVTests(test.SickbeardTestDBCase):
     """
     Test tv
     """
@@ -103,8 +116,8 @@ class TVTests(test.SickChillTestDBCase):
         """
         Set up
         """
-        super().setUp()
-        settings.showList = []
+        super(TVTests, self).setUp()
+        sickbeard.showList = []
 
     @staticmethod
     def test_get_episode():
@@ -121,7 +134,7 @@ class TVTests(test.SickChillTestDBCase):
         show.airs = "monday"
         show.startyear = 1987
         show.saveToDB()
-        settings.showList = [show]
+        sickbeard.showList = [show]
         # TODO: implement
 
 

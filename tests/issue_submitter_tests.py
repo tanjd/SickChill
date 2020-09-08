@@ -1,10 +1,35 @@
+# coding=UTF-8
+# Author: Dennis Lutter <lad1337@gmail.com>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+
 """
 Test exception logging
 """
 
+from __future__ import print_function, unicode_literals
+import os.path
+import sys
 import unittest
 
-from sickchill import logger
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib')))
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from sickbeard import logger, ex
 
 
 def exception_generator():
@@ -14,7 +39,7 @@ def exception_generator():
     try:
         raise Exception('FAKE EXCEPTION')
     except Exception as error:
-        logger.exception("FAKE ERROR: " + str(error))
+        logger.log("FAKE ERROR: " + ex(error), logger.ERROR)
         logger.submit_errors()
         raise
 

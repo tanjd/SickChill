@@ -1,9 +1,14 @@
+# -*- coding: utf-8 -*-
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import bisect
 import io
 import logging
 import os
 import zipfile
 
+# Third Party Imports
 from babelfish import Language
 from guessit import guessit
 from requests import Session
@@ -15,7 +20,8 @@ from subliminal.subtitle import fix_line_ending, Subtitle
 from subliminal.utils import sanitize
 from subliminal.video import Episode, Movie
 
-from sickchill import settings
+# First Party Imports
+import sickbeard
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +32,7 @@ class WizdomSubtitle(Subtitle):
 
     def __init__(self, language, hearing_impaired, page_link, series, season, episode, title, imdb_id, subtitle_id,
                  releases):
-        super().__init__(language, hearing_impaired, page_link)
+        super(WizdomSubtitle, self).__init__(language, hearing_impaired, page_link)
         self.series = series
         self.season = season
         self.episode = episode
@@ -104,7 +110,7 @@ class WizdomProvider(Provider):
         title = title.replace('\'', '')
         # get TMDB ID first
         r = self.session.get('http://api.tmdb.org/3/search/{}?api_key={}&query={}{}&language=en'.format(
-            category, settings.TMDB_API_KEY, title, '' if not year else '&year={}'.format(year)))
+            category, sickbeard.TMDB_API_KEY, title, '' if not year else '&year={}'.format(year)))
         r.raise_for_status()
         tmdb_results = r.json().get('results')
         if tmdb_results:
@@ -112,7 +118,7 @@ class WizdomProvider(Provider):
             if tmdb_id:
                 # get actual IMDB ID from TMDB
                 r = self.session.get('http://api.tmdb.org/3/{}/{}{}?api_key={}&language=en'.format(
-                    category, tmdb_id, '' if is_movie else '/external_ids', settings.TMDB_API_KEY))
+                    category, tmdb_id, '' if is_movie else '/external_ids', sickbeard.TMDB_API_KEY))
                 r.raise_for_status()
                 return str(r.json().get('imdb_id', '')) or None
         return None
@@ -165,9 +171,9 @@ class WizdomProvider(Provider):
             logger.debug('Found subtitle %r', subtitle)
             subtitles[subtitle_id] = subtitle
 
-        return list(subtitles.values())
+        return subtitles.values()
 
-    def list_subtitles(self, video: Episode, languages):
+    def list_subtitles(self, video, languages):
         season = episode = None
         title = video.title
         year = video.year
@@ -182,7 +188,7 @@ class WizdomProvider(Provider):
 
         return [s for s in self.query(title, season, episode, year, filename, imdb_id) if s.language in languages]
 
-    def download_subtitle(self, subtitle: WizdomSubtitle):
+    def download_subtitle(self, subtitle):
         # download
         url = 'http://zip.{}/{}.zip'.format(self.server_url, subtitle.subtitle_id)
         r = self.session.get(url, headers={'Referer': subtitle.page_link}, timeout=10)

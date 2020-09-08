@@ -1,27 +1,53 @@
+# coding=utf-8
+# Author: Dustyn Gibson <miigotu@gmail.com>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import re
 
-from sickchill import logger, settings
-from sickchill.helper.common import try_int
-from sickchill.tv import Show, TVEpisode
+# Third Party Imports
+import six
+from requests.exceptions import HTTPError
 
+# First Party Imports
+import sickbeard
+from sickbeard import logger
+from sickbeard.tv import Show
+from sickchill.helper.common import try_int
+
+# Local Folder Imports
 from .tvdb import TVDB
 
 
 class ShowIndexer(object):
     TVDB = 1
     TVRAGE = 2
-    FANART = 13
-    TMDB = 14
 
     def __init__(self):
-        if settings.INDEXER_DEFAULT is None:
-            settings.INDEXER_DEFAULT = 1
+        if sickbeard.INDEXER_DEFAULT is None:
+            sickbeard.INDEXER_DEFAULT = 1
 
         self.indexers = {1: TVDB()}
         self.__build_indexer_attribute_getters()
 
     def __getitem__(self, item):
-        if isinstance(item, str):
+        if isinstance(item, six.string_types):
             for index, indexer in self.indexers:
                 if item in (indexer.name, indexer.slug):
                     return indexer
@@ -32,7 +58,7 @@ class ShowIndexer(object):
         return self.indexers[item]
 
     def __iter__(self):
-        for i in self.indexers.items():
+        for i in six.iteritems(self.indexers):
             yield i
 
     def __build_indexer_attribute_getters(self):
@@ -59,7 +85,7 @@ class ShowIndexer(object):
 
                 # If we didn't find it in our available indexers, use the default.
                 if not indexer or indexer not in self.indexers:
-                    indexer = settings.INDEXER_DEFAULT
+                    indexer = sickbeard.INDEXER_DEFAULT
 
                 return getattr(self.indexers[indexer], _attribute)
             return indexer_attribute
@@ -69,7 +95,7 @@ class ShowIndexer(object):
 
     def search(self, indexer=None, *args, **kwargs):
         if indexer is None:
-            indexer = settings.INDEXER_DEFAULT
+            indexer = sickbeard.INDEXER_DEFAULT
         return self.indexers[indexer].search(*args, **kwargs)
 
     def search_indexers_for_series_name(self, name, language=None, exact=False):
@@ -83,22 +109,19 @@ class ShowIndexer(object):
 
     def search_indexers_for_series_id(self, name=None, indexerid=None, language=None, indexer=None):
         if not indexer:
-            indexer = list(self.indexers)
+            indexer = self.indexers.keys()
 
-        assert not isinstance(indexer, bytes)
-        if isinstance(indexer, (int, str)):
+        if isinstance(indexer, (int, six.string_types)):
             indexer = [indexer]
 
-        assert not isinstance(name, bytes)
-
-        if isinstance(name, str):
+        if isinstance(name, six.string_types):
             name = [name]
 
         if indexerid:
             indexerid = int(indexerid)
 
         if not language:
-            language = settings.INDEXER_DEFAULT_LANGUAGE
+            language = sickbeard.INDEXER_DEFAULT_LANGUAGE
 
         assert bool(indexerid) or bool(name), "Must provide either a name or an indexer id to search indexers with"
 
@@ -107,7 +130,7 @@ class ShowIndexer(object):
             for i in indexer:
                 search = (name, indexerid)[bool(indexerid)]
                 # noinspection PyUnresolvedReferences
-                logger.debug("Trying to find {} on {}".format(search, self.name(i)))
+                logger.log("Trying to find {} on {}".format(search, self.name(i)), logger.DEBUG)
                 if indexerid:
                     result = self.indexers[i].get_series_by_id(indexerid, language)
                 else:
@@ -118,10 +141,10 @@ class ShowIndexer(object):
                     garbage = result.seriesName, result.id
                 except AttributeError:
                     # noinspection PyUnresolvedReferences
-                    logger.debug("Failed to find {} on {}".format(search, self.name(i)))
+                    logger.log("Failed to find {} on {}".format(search, self.name(i)), logger.DEBUG)
                     continue
 
-                ShowObj = Show.find(settings.showList, result.id)
+                ShowObj = Show.find(sickbeard.showList, result.id)
                 if indexerid and ShowObj and ShowObj.indexerid == result.id:
                     return i, result
                 elif indexerid and indexerid == result.id:
@@ -145,7 +168,7 @@ class ShowIndexer(object):
         return self.indexers[show.indexer].episodes(show, season)
 
     def episode(self, item, season=None, episode=None, **kwargs):
-        if isinstance(item, TVEpisode):
+        if isinstance(item, sickbeard.tv.TVEpisode):
             show = item.show
             season = item.season
             episode = item.episode
@@ -158,27 +181,27 @@ class ShowIndexer(object):
         class __TVShow(object):
             def __init__(self, __indexerid, __language, __indexer):
                 self.indexerid = __indexerid
-                self.indexer = __indexer or settings.INDEXER_DEFAULT
-                self.lang = __language or settings.INDEXER_DEFAULT_LANGUAGE
+                self.indexer = __indexer or sickbeard.INDEXER_DEFAULT
+                self.lang = __language or sickbeard.INDEXER_DEFAULT_LANGUAGE
         return self.series_poster_url(__TVShow(indexerid, language, indexer), thumb)
 
-    def series_poster_url(self, show, thumb=False, multiple=False):
-        return self.indexers[show.indexer].series_poster_url(show, thumb, multiple=multiple)
+    def series_poster_url(self, show, thumb=False):
+        return self.indexers[show.indexer].series_poster_url(show, thumb)
 
-    def series_banner_url(self, show, thumb=False, multiple=False):
-        return self.indexers[show.indexer].series_banner_url(show, thumb, multiple=multiple)
+    def series_banner_url(self, show, thumb=False):
+        return self.indexers[show.indexer].series_banner_url(show, thumb)
 
-    def series_fanart_url(self, show, thumb=False, multiple=False):
-        return self.indexers[show.indexer].series_fanart_url(show, thumb, multiple=multiple)
+    def series_fanart_url(self, show, thumb=False):
+        return self.indexers[show.indexer].series_fanart_url(show, thumb)
 
-    def season_poster_url(self, show, season, thumb=False, multiple=False):
-        return self.indexers[show.indexer].season_poster_url(show, season, thumb, multiple=multiple)
+    def season_poster_url(self, show, season, thumb=False):
+        return self.indexers[show.indexer].season_poster_url(show, season, thumb)
 
-    def season_banner_url(self, show, season, thumb=False, multiple=False):
-        return self.indexers[show.indexer].season_banner_url(show, season, thumb, multiple=multiple)
+    def season_banner_url(self, show, season, thumb=False):
+        return self.indexers[show.indexer].season_banner_url(show, season, thumb)
 
-    def episode_image_url(self, episode, multiple=False):
-        return self.indexers[episode.show.indexer].episode_image_url(episode, multiple=multiple)
+    def episode_image_url(self, episode):
+        return self.indexers[episode.show.indexer].episode_image_url(episode)
 
     def get_indexer_favorites(self):
         results = []

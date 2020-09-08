@@ -1,13 +1,19 @@
+# coding=utf-8
+"""
+Test scene helpers
+"""
+
+
 import sys
 import unittest
 
-from sickchill import settings
-from sickchill.oldbeard import common, db, name_cache, scene_exceptions, show_name_helpers
-from sickchill.tv import TVShow as Show
-from tests import test_lib as test
+import tests.test_lib as test
+import sickbeard
+from sickbeard import common, db, name_cache, scene_exceptions, show_name_helpers
+from sickbeard.tv import TVShow as Show
 
 
-class SceneTests(test.SickChillTestDBCase):
+class SceneTests(test.SickbeardTestDBCase):
     """
     Test Scene
     """
@@ -47,8 +53,8 @@ class SceneTests(test.SickChillTestDBCase):
         """
         Test filtering of bad releases
         """
-        settings.IGNORE_WORDS = 'GermaN'
-        settings.REQUIRE_WORDS = 'STUFF'
+        sickbeard.IGNORE_WORDS = 'GermaN'
+        sickbeard.REQUIRE_WORDS = 'STUFF'
         self.assertFalse(show_name_helpers.filter_bad_releases('Show.S02.German.Stuff-Grp'))
         self.assertTrue(show_name_helpers.filter_bad_releases('Show.S02.Some.Stuff-Core2HD'))
         self.assertFalse(show_name_helpers.filter_bad_releases('Show.S02.Some.German.Stuff-Grp'))
@@ -56,7 +62,7 @@ class SceneTests(test.SickChillTestDBCase):
         self.assertFalse(show_name_helpers.filter_bad_releases('Show.S02.This.Is.German'))
 
 
-class SceneExceptionTestCase(test.SickChillTestDBCase):
+class SceneExceptionTestCase(test.SickbeardTestDBCase):
     """
     Test scene exceptions test case
     """
@@ -64,7 +70,7 @@ class SceneExceptionTestCase(test.SickChillTestDBCase):
         """
         Set up tests
         """
-        super().setUp()
+        super(SceneExceptionTestCase, self).setUp()
         scene_exceptions.retrieve_exceptions()
 
     def test_scene_ex_empty(self):

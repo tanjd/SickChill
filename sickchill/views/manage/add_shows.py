@@ -1,22 +1,47 @@
+# coding=utf-8
+# Author: Nic Wolfe <nic@wolfeden.ca>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import datetime
-import json
 import os
 import re
 import traceback
-from urllib.parse import unquote_plus
 
-import dateutil.parser
+# Third Party Imports
+import dateutil
+import six
+from requests.compat import unquote_plus
 from tornado.escape import xhtml_unescape
 from tornado.web import HTTPError
+from trakt import TraktAPI
 
+# First Party Imports
+import sickbeard
 import sickchill
-from sickchill import logger, settings
+from sickbeard import config, db, filters, helpers, logger, ui
+from sickbeard.blackandwhitelist import short_group_names
+from sickbeard.common import Quality
+from sickbeard.traktTrending import trakt_trending
 from sickchill.helper import sanitize_filename, try_int
-from sickchill.oldbeard import config, db, filters, helpers, ui
-from sickchill.oldbeard.blackandwhitelist import short_group_names
-from sickchill.oldbeard.common import Quality
-from sickchill.oldbeard.trakt_api import TraktAPI
-from sickchill.oldbeard.traktTrending import trakt_trending
+from sickchill.helper.encoding import ek
+from sickchill.helper.exceptions import ex
 from sickchill.show.recommendations.favorites import favorites
 from sickchill.show.recommendations.imdb import imdb_popular
 from sickchill.show.Show import Show
@@ -24,11 +49,17 @@ from sickchill.views.common import PageTemplate
 from sickchill.views.home import Home
 from sickchill.views.routes import Route
 
+try:
+    import json
+except ImportError:
+    # noinspection PyPackageRequirements,PyUnresolvedReferences
+    import simplejson as json
+
 
 @Route('/addShows(/?.*)', name='addShows')
 class AddShows(Home):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(AddShows, self).__init__(*args, **kwargs)
 
     def index(self, *args_, **kwargs_):
         t = PageTemplate(rh=self, filename="addShows.mako")
@@ -39,12 +70,12 @@ class AddShows(Home):
         return sanitize_filename(name)
 
     def searchIndexersForShowName(self, search_term, lang=None, indexer=None):
-        self.set_header('Cache-Control', 'max-age=0,no-cache,no-store')
-        self.set_header('Content-Type', 'application/json')
+        self.set_header(b'Cache-Control', 'max-age=0,no-cache,no-store')
+        self.set_header(b'Content-Type', 'application/json')
         if not lang or lang == 'null':
-            lang = settings.INDEXER_DEFAULT_LANGUAGE
+            lang = sickbeard.INDEXER_DEFAULT_LANGUAGE
 
-        search_term = xhtml_unescape(search_term)
+        search_term = xhtml_unescape(search_term).encode('utf-8')
 
         searchTerms = [search_term]
 
@@ -64,23 +95,23 @@ class AddShows(Home):
 
         # Query Indexers for each search term and build the list of results
         for i, j in sickchill.indexer if not int(indexer) else [(int(indexer), None)]:
-            logger.debug("Searching for Show with searchterm(s): {0} on Indexer: {1}".format(
-                searchTerms, 'theTVDB'))
+            logger.log("Searching for Show with searchterm(s): {0} on Indexer: {1}".format(
+                searchTerms, 'theTVDB'), logger.DEBUG)
             for searchTerm in searchTerms:
                 # noinspection PyBroadException
                 try:
                     indexerResults = sickchill.indexer[i].search(searchTerm, language=lang)
                 except Exception:
-                    logger.exception(traceback.format_exc())
+                    # logger.log(traceback.format_exc(), logger.ERROR)
                     continue
 
                 # add search results
                 results.setdefault(i, []).extend(indexerResults)
 
-        for i, shows in results.items():
+        for i, shows in six.iteritems(results):
             # noinspection PyUnresolvedReferences
             final_results.extend({(sickchill.indexer.name(i), i, sickchill.indexer[i].show_url, show['id'],
-                                   show['seriesName'], show['firstAired'], sickchill.tv.Show.find(settings.showList, show['id']) is not None
+                                   show['seriesName'], show['firstAired'], sickbeard.tv.Show.find(sickbeard.showList, show['id']) is not None
                                    ) for show in shows})
 
         lang_id = sickchill.indexer.lang_dict()[lang]
@@ -98,8 +129,8 @@ class AddShows(Home):
 
         root_dirs = [unquote_plus(xhtml_unescape(x)) for x in root_dirs]
 
-        if settings.ROOT_DIRS:
-            default_index = int(settings.ROOT_DIRS.split('|')[0])
+        if sickbeard.ROOT_DIRS:
+            default_index = int(sickbeard.ROOT_DIRS.split('|')[0])
         else:
             default_index = 0
 
@@ -115,15 +146,15 @@ class AddShows(Home):
         for root_dir in root_dirs:
             # noinspection PyBroadException
             try:
-                file_list = os.listdir(root_dir)
+                file_list = ek(os.listdir, root_dir)
             except Exception:
                 continue
 
             for cur_file in file_list:
                 # noinspection PyBroadException
                 try:
-                    cur_path = os.path.normpath(os.path.join(root_dir, cur_file))
-                    if not os.path.isdir(cur_path):
+                    cur_path = ek(os.path.normpath, ek(os.path.join, root_dir, cur_file))
+                    if not ek(os.path.isdir, cur_path):
                         continue
                     # ignore Synology folders
                     if cur_file.lower() in ['#recycle', '@eadir']:
@@ -134,7 +165,9 @@ class AddShows(Home):
                 cur_dir = {
                     'dir': cur_path,
                     'existing_info': (None, None, None),
-                    'display_dir': '<b>' + os.path.dirname(cur_path) + os.sep + '</b>' + os.path.basename(cur_path)
+                    'display_dir': '<b>' + ek(os.path.dirname, cur_path) + os.sep + '</b>' + ek(
+                        os.path.basename,
+                        cur_path),
                 }
 
                 # see if the folder is in KODI already
@@ -148,7 +181,7 @@ class AddShows(Home):
                 dir_list.append(cur_dir)
 
                 indexer_id = show_name = indexer = None
-                for cur_provider in settings.metadata_provider_dict.values():
+                for cur_provider in sickbeard.metadata_provider_dict.values():
                     if not (indexer_id and show_name):
                         (indexer_id, show_name, indexer) = cur_provider.retrieveShowMetadata(cur_path)
                         if all((indexer_id, show_name, indexer)):
@@ -157,7 +190,7 @@ class AddShows(Home):
                 if all((indexer_id, show_name, indexer)):
                     cur_dir['existing_info'] = (indexer_id, show_name, indexer)
 
-                if indexer_id and Show.find(settings.showList, indexer_id):
+                if indexer_id and Show.find(sickbeard.showList, indexer_id):
                     cur_dir['added_already'] = True
         return t.render(dirList=dir_list)
 
@@ -184,7 +217,7 @@ class AddShows(Home):
 
         elif not show_name:
             default_show_name = re.sub(r' \(\d{4}\)', '',
-                                       os.path.basename(os.path.normpath(show_dir)).replace('.', ' '))
+                                       ek(os.path.basename, ek(os.path.normpath, show_dir)).replace('.', ' '))
         else:
             default_show_name = show_name
 
@@ -197,7 +230,7 @@ class AddShows(Home):
         provided_indexer_id = int(indexer_id or 0)
         provided_indexer_name = show_name
 
-        provided_indexer = int(indexer or settings.INDEXER_DEFAULT)
+        provided_indexer = int(indexer or sickbeard.INDEXER_DEFAULT)
 
         return t.render(
             enable_anime_options=True, use_provided_info=use_provided_info,
@@ -280,7 +313,7 @@ class AddShows(Home):
         try:
             trending_shows, black_list = trakt_trending.fetch_trending_shows(traktList, page_url)
         except Exception as e:
-            logger.warning("Could not get trending shows: {0}".format(str(e)))
+            logger.log("Could not get trending shows: {0}".format(ex(e)), logger.WARNING)
 
         return t.render(black_list=black_list, trending_shows=trending_shows)
 
@@ -302,7 +335,7 @@ class AddShows(Home):
         try:
             popular_shows = imdb_popular.fetch_popular_shows()
         except Exception as e:
-            logger.warning("Could not get popular shows: {0}".format(str(e)))
+            logger.log("Could not get popular shows: {0}".format(ex(e)), logger.WARNING)
             popular_shows = None
 
         return t.render(title=_("Popular Shows"), header=_("Popular Shows"),
@@ -319,16 +352,16 @@ class AddShows(Home):
 
         if self.get_body_argument('submit', None):
             tvdb_user = self.get_body_argument('tvdb_user')
-            tvdb_user_key = filters.unhide(settings.TVDB_USER_KEY, self.get_body_argument('tvdb_user_key'))
+            tvdb_user_key = filters.unhide(sickbeard.TVDB_USER_KEY, self.get_body_argument('tvdb_user_key'))
             if tvdb_user and tvdb_user_key:
-                if tvdb_user != settings.TVDB_USER or tvdb_user_key != settings.TVDB_USER_KEY:
+                if tvdb_user != sickbeard.TVDB_USER or tvdb_user_key != sickbeard.TVDB_USER_KEY:
                     favorites.test_user_key(tvdb_user, tvdb_user_key, 1)
 
         try:
             favorite_shows = favorites.fetch_indexer_favorites()
         except Exception as e:
-            logger.exception(traceback.format_exc())
-            logger.warning(_("Could not get favorite shows: {0}").format(str(e)))
+            logger.log(traceback.format_exc(), logger.ERROR)
+            logger.log(_("Could not get favorite shows: {0}").format(ex(e)), logger.WARNING)
             favorite_shows = None
 
         return t.render(title=_("Favorite Shows"), header=_("Favorite Shows"),
@@ -345,9 +378,9 @@ class AddShows(Home):
 
         data = {'shows': [{'ids': {'tvdb': indexer_id}}]}
 
-        trakt_api = TraktAPI(settings.SSL_VERIFY, settings.TRAKT_TIMEOUT)
+        trakt_api = TraktAPI(sickbeard.SSL_VERIFY, sickbeard.TRAKT_TIMEOUT)
 
-        trakt_api.traktRequest("users/" + settings.TRAKT_USERNAME + "/lists/" + settings.TRAKT_BLACKLIST_NAME + "/items", data, method='POST')
+        trakt_api.traktRequest("users/" + sickbeard.TRAKT_USERNAME + "/lists/" + sickbeard.TRAKT_BLACKLIST_NAME + "/items", data, method='POST')
 
         return self.redirect('/addShows/trendingShows/')
 
@@ -374,7 +407,7 @@ class AddShows(Home):
         if indexer != "TVDB":
             indexer_id = helpers.tvdbid_from_remote_id(indexer_id, indexer.upper())
             if not indexer_id:
-                logger.info("Unable to to find tvdb ID to add {0}".format(show_name))
+                logger.log("Unable to to find tvdb ID to add {0}".format(show_name))
                 ui.notifications.error(
                     "Unable to add {0}".format(show_name),
                     "Could not add {0}.  We were unable to locate the tvdb id at this time.".format(show_name)
@@ -383,7 +416,7 @@ class AddShows(Home):
 
         indexer_id = try_int(indexer_id)
 
-        if indexer_id <= 0 or Show.find(settings.showList, indexer_id):
+        if indexer_id <= 0 or Show.find(sickbeard.showList, indexer_id):
             return
 
         # Sanitize the parameter anyQualities and bestQualities. As these would normally be passed as lists
@@ -420,22 +453,22 @@ class AddShows(Home):
             location = root_dir
 
         else:
-            default_status = settings.STATUS_DEFAULT
-            quality = settings.QUALITY_DEFAULT
-            season_folders = settings.SEASON_FOLDERS_DEFAULT
-            subtitles = settings.SUBTITLES_DEFAULT
-            anime = settings.ANIME_DEFAULT
-            scene = settings.SCENE_DEFAULT
-            default_status_after = settings.STATUS_DEFAULT_AFTER
+            default_status = sickbeard.STATUS_DEFAULT
+            quality = sickbeard.QUALITY_DEFAULT
+            season_folders = sickbeard.SEASON_FOLDERS_DEFAULT
+            subtitles = sickbeard.SUBTITLES_DEFAULT
+            anime = sickbeard.ANIME_DEFAULT
+            scene = sickbeard.SCENE_DEFAULT
+            default_status_after = sickbeard.STATUS_DEFAULT_AFTER
 
-            if settings.ROOT_DIRS:
-                root_dirs = settings.ROOT_DIRS.split('|')
+            if sickbeard.ROOT_DIRS:
+                root_dirs = sickbeard.ROOT_DIRS.split('|')
                 location = root_dirs[int(root_dirs[0]) + 1]
             else:
                 location = None
 
         if not location:
-            logger.info("There was an error creating the show, no root directory setting found")
+            logger.log("There was an error creating the show, no root directory setting found")
             return _("No root directories setup, please go back and add one.")
 
         show_name = sickchill.indexer[1].get_series_by_id(indexer_id, indexer_lang).seriesName
@@ -446,7 +479,7 @@ class AddShows(Home):
             return self.redirect('/home/')
 
         # add the show
-        settings.showQueueScheduler.action.add_show(
+        sickbeard.showQueueScheduler.action.add_show(
             indexer=1, indexer_id=indexer_id, showDir=show_dir, default_status=default_status, quality=quality,
             season_folders=season_folders, lang=indexer_lang, subtitles=subtitles, subtitles_sr_metadata=None,
             anime=anime, scene=scene, paused=None, blacklist=blacklist, whitelist=whitelist,
@@ -467,7 +500,7 @@ class AddShows(Home):
         """
 
         if not indexerLang:
-            indexerLang = settings.INDEXER_DEFAULT_LANGUAGE
+            indexerLang = sickbeard.INDEXER_DEFAULT_LANGUAGE
 
         # grab our list of other dirs if given
         if not other_shows:
@@ -500,53 +533,54 @@ class AddShows(Home):
         series_pieces = whichSeries.split('|')
         if (whichSeries and rootDir) or (whichSeries and fullShowPath and len(series_pieces) > 1):
             if len(series_pieces) < 6:
-                logger.error("Unable to add show due to show selection. Not enough arguments: {0}".format((repr(series_pieces))))
+                logger.log("Unable to add show due to show selection. Not enough arguments: {0}".format((repr(series_pieces))),
+                           logger.ERROR)
                 ui.notifications.error(_("Unknown error. Unable to add show due to problem with show selection."))
                 return self.redirect('/addShows/existingShows/')
 
             indexer = int(series_pieces[1])
             indexer_id = int(series_pieces[3])
             # Show name was sent in UTF-8 in the form
-            show_name = xhtml_unescape(series_pieces[4])
+            show_name = xhtml_unescape(series_pieces[4]).decode('utf-8')
         else:
             # if no indexer was provided use the default indexer set in General settings
             if not providedIndexer:
-                providedIndexer = settings.INDEXER_DEFAULT
+                providedIndexer = sickbeard.INDEXER_DEFAULT
 
             indexer = int(providedIndexer)
             indexer_id = int(whichSeries)
-            show_name = os.path.basename(os.path.normpath(xhtml_unescape(fullShowPath)))
+            show_name = ek(os.path.basename, ek(os.path.normpath, xhtml_unescape(fullShowPath)))
 
         # use the whole path if it's given, or else append the show name to the root dir to get the full show path
         if fullShowPath:
-            show_dir = os.path.normpath(xhtml_unescape(fullShowPath))
+            show_dir = ek(os.path.normpath, xhtml_unescape(fullShowPath))
             extra_check_dir = show_dir
         else:
             folder_name = show_name
             s = sickchill.indexer.series_by_id(indexerid=indexer_id, indexer=indexer, language=indexerLang)
-            if settings.ADD_SHOWS_WITH_YEAR and s.firstAired:
+            if sickbeard.ADD_SHOWS_WITH_YEAR and s.firstAired:
                 try:
                     year = '({0})'.format(dateutil.parser.parse(s.firstAired).year)
                     if year not in folder_name:
                         folder_name = '{0} {1}'.format(s.seriesName, year)
                 except (TypeError, ValueError):
-                    logger.info(_('Could not append the show year folder for the show: {0}').format(folder_name))
+                    logger.log(_('Could not append the show year folder for the show: {0}').format(folder_name))
 
-            show_dir = os.path.join(rootDir, sanitize_filename(xhtml_unescape(folder_name)))
-            extra_check_dir = os.path.join(rootDir, sanitize_filename(xhtml_unescape(show_name)))
+            show_dir = ek(os.path.join, rootDir, sanitize_filename(xhtml_unescape(folder_name)))
+            extra_check_dir = ek(os.path.join, rootDir, sanitize_filename(xhtml_unescape(show_name)))
 
         # blanket policy - if the dir exists you should have used "add existing show" numbnuts
-        if (os.path.isdir(show_dir) or os.path.isdir(extra_check_dir)) and not fullShowPath:
+        if (ek(os.path.isdir, show_dir) or ek(os.path.isdir, extra_check_dir)) and not fullShowPath:
             ui.notifications.error(_("Unable to add show"), _("Folder {show_dir} exists already").format(show_dir=show_dir))
             return self.redirect('/addShows/existingShows/')
 
         # don't create show dir if config says not to
-        if settings.ADD_SHOWS_WO_DIR:
-            logger.info("Skipping initial creation of " + show_dir + " due to config.ini setting")
+        if sickbeard.ADD_SHOWS_WO_DIR:
+            logger.log("Skipping initial creation of " + show_dir + " due to config.ini setting")
         else:
             dir_exists = helpers.makeDir(show_dir)
             if not dir_exists:
-                logger.exception("Unable to create the folder " + show_dir + ", can't add the show")
+                logger.log("Unable to create the folder " + show_dir + ", can't add the show", logger.ERROR)
                 ui.notifications.error(_("Unable to add show"),
                                        _("Unable to create the folder {show_dir}, can't add the show").format(show_dir=show_dir))
                 # Don't redirect to default page because user wants to see the new show
@@ -577,7 +611,7 @@ class AddShows(Home):
         newQuality = Quality.combineQualities([int(q) for q in anyQualities], [int(q) for q in bestQualities])
 
         # add the show
-        settings.showQueueScheduler.action.add_show(
+        sickbeard.showQueueScheduler.action.add_show(
             indexer, indexer_id, showDir=show_dir, default_status=int(defaultStatus), quality=newQuality,
             season_folders=season_folders, lang=indexerLang, subtitles=subtitles, subtitles_sr_metadata=subtitles_sr_metadata,
             anime=anime, scene=scene, paused=None, blacklist=blacklist, whitelist=whitelist,
@@ -645,15 +679,15 @@ class AddShows(Home):
 
             if indexer is not None and indexer_id is not None:
                 # add the show
-                settings.showQueueScheduler.action.add_show(
+                sickbeard.showQueueScheduler.action.add_show(
                     indexer, indexer_id, show_dir,
-                    default_status=settings.STATUS_DEFAULT,
-                    quality=settings.QUALITY_DEFAULT,
-                    season_folders=settings.SEASON_FOLDERS_DEFAULT,
-                    subtitles=settings.SUBTITLES_DEFAULT,
-                    anime=settings.ANIME_DEFAULT,
-                    scene=settings.SCENE_DEFAULT,
-                    default_status_after=settings.STATUS_DEFAULT_AFTER
+                    default_status=sickbeard.STATUS_DEFAULT,
+                    quality=sickbeard.QUALITY_DEFAULT,
+                    season_folders=sickbeard.SEASON_FOLDERS_DEFAULT,
+                    subtitles=sickbeard.SUBTITLES_DEFAULT,
+                    anime=sickbeard.ANIME_DEFAULT,
+                    scene=sickbeard.SCENE_DEFAULT,
+                    default_status_after=sickbeard.STATUS_DEFAULT_AFTER
                 )
                 num_added += 1
 

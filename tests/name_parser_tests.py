@@ -1,15 +1,29 @@
+# coding=utf-8
+"""
+Test name parsing
+"""
+
+
+from __future__ import print_function, unicode_literals
+
 import datetime
-import os
+import os.path
 import sys
 import unittest
 
-from sickchill import tv
-from sickchill.oldbeard import common
-from sickchill.oldbeard.name_parser import parser
-from tests import test_lib as test
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib')))
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-DEBUG = os.getenv('DEBUG')
-VERBOSE = os.getenv('VERBOSE')
+from sickbeard import tv
+from sickbeard.name_parser import parser
+import tests.test_lib as test
+
+import six
+
+
+SYS_ENCODING = 'UTF-8'
+
+DEBUG = VERBOSE = False
 
 SIMPLE_TEST_CASES = {
     'standard': {
@@ -120,11 +134,6 @@ ANIME_TEST_CASES = {
         'Show Name - S01E02': parser.ParseResult(None, 'Show Name', 1, [2]),
         'Show Name - S01E02-03': parser.ParseResult(None, 'Show Name', 1, [2, 3]),
     },
-    'anime_bare': {
-        'Show Name - 102': parser.ParseResult(None, 'Show Name', ab_episode_numbers=[102], version=1),
-        '[SC]_Show_Name_123': parser.ParseResult(None, 'Show Name', release_group='SC', ab_episode_numbers=[123], version=1),
-        'Show.Name.-.134.-.1080p.BluRay.x264.DHD':  parser.ParseResult(None, 'Show Name', ab_episode_numbers=[134], quality=common.Quality.FULLHDBLURAY, version=1),
-    }
 }
 
 COMBINATION_TEST_CASES = [
@@ -171,19 +180,19 @@ UNICODE_TEST_CASES = [
 FAILURE_CASES = ['7sins-jfcs01e09-720p-bluray-x264']
 
 
-class UnicodeTests(test.SickChillTestDBCase):
+class UnicodeTests(test.SickbeardTestDBCase):
     """
-    Test str
+    Test six.text_type
     """
     def __init__(self, something):
-        super().__init__(something)
-        super().setUp()
+        super(UnicodeTests, self).__init__(something)
+        super(UnicodeTests, self).setUp()
         self.show = tv.TVShow(1, 1, 'en')
         self.show.name = "The Big Bang Theory"
 
     def _test_unicode(self, name, result):
         """
-        Test str
+        Test six.text_type
 
         :param name:
         :param result:
@@ -193,18 +202,18 @@ class UnicodeTests(test.SickChillTestDBCase):
         parse_result = name_parser.parse(name)
 
         # this shouldn't raise an exception
-        repr(str(parse_result))
+        repr(six.text_type(parse_result))
         self.assertEqual(parse_result.extra_info, result.extra_info)
 
     def test_unicode(self):
         """
-        Test str
+        Test six.text_type
         """
         for (name, result) in UNICODE_TEST_CASES:
             self._test_unicode(name, result)
 
 
-class FailureCaseTests(test.SickChillTestDBCase):
+class FailureCaseTests(test.SickbeardTestDBCase):
     """
     Test cases that should fail
     """
@@ -234,7 +243,7 @@ class FailureCaseTests(test.SickChillTestDBCase):
             self.assertTrue(self._test_name(name))
 
 
-class ComboTests(test.SickChillTestDBCase):
+class ComboTests(test.SickbeardTestDBCase):
     """
     Perform combination tests
     """
@@ -264,7 +273,7 @@ class ComboTests(test.SickChillTestDBCase):
             print(test_result, test_result.which_regex)
             print(result, which_regexes)
 
-        self.assertEqual(str(test_result), str(result))
+        self.assertEqual(test_result, result)
         for cur_regex in which_regexes:
             self.assertTrue(cur_regex in test_result.which_regex)
         self.assertEqual(len(which_regexes), len(test_result.which_regex))
@@ -279,13 +288,13 @@ class ComboTests(test.SickChillTestDBCase):
             self._test_combo(os.path.normpath(name), result, which_regexes)
 
 
-class BasicTests(test.SickChillTestDBCase):
+class BasicTests(test.SickbeardTestDBCase):
     """
     Basic name parsing tests
     """
     def __init__(self, something):
-        super().__init__(something)
-        super().setUp()
+        super(BasicTests, self).__init__(something)
+        super(BasicTests, self).setUp()
         self.show = tv.TVShow(1, 1, 'en')
 
     def _test_names(self, name_parser, section, transform=None, verbose=False):
@@ -322,17 +331,13 @@ class BasicTests(test.SickChillTestDBCase):
                 result.which_regex = [section]
                 test_result = name_parser.parse(cur_test)
 
-            def print_debug():
-                print(f'{cur_test}:')
-                print(f'Test Result: {test_result}')
-                print(f'Expected Result: {result}')
-
             if DEBUG or verbose:
-                print_debug()
-
-            result.score = test_result.score  # Needed so we don't have to specify expected regex score in each test case.
-            self.assertEqual(test_result.which_regex, [section], print_debug())
-            self.assertEqual(str(test_result), str(result), print_debug())
+                print('air_by_date:', test_result.is_air_by_date, 'air_date:', test_result.air_date)
+                print('anime:', test_result.is_anime, 'ab_episode_numbers:', test_result.ab_episode_numbers)
+                print(test_result)
+                print(result)
+            self.assertEqual(test_result.which_regex, [section], '{0} : {1} != {2}'.format(cur_test, test_result.which_regex, [section]))
+            self.assertEqual(six.text_type(test_result), six.text_type(result), '{0} : {1} != {2}'.format(cur_test, six.text_type(test_result), six.text_type(result)))
 
     def test_standard_names(self):
         """
@@ -447,18 +452,14 @@ class BasicTests(test.SickChillTestDBCase):
         self._test_names(name_parser, 'season_only', lambda x: x + '.avi')
 
 
-class AnimeTests(test.SickChillTestDBCase):
+class AnimeTests(test.SickbeardTestDBCase):
     """
     Basic tests for anime
     """
     def __init__(self, something):
-        super().__init__(something)
-        super().setUp()
+        super(AnimeTests, self).__init__(something)
+        super(AnimeTests, self).setUp()
         self.show = tv.TVShow(1, 1, 'en')
-        self.show.anime = True
-
-    def tearDown(self):
-        parser.name_parser_cache.data.clear()
 
     def _test_names(self, name_parser, section, transform=None, verbose=False):
         """
@@ -493,17 +494,13 @@ class AnimeTests(test.SickChillTestDBCase):
                 result.which_regex = [section]
                 test_result = name_parser.parse(cur_test)
 
-            def print_debug():
-                print(f'{cur_test}:')
-                print(f'Test Result: {test_result}')
-                print(f'Expected Result: {result}')
-
             if DEBUG or verbose:
-                print_debug()
-
-            result.score = test_result.score  # Needed so we don't have to specify expected regex score in each test case.
-            self.assertEqual(test_result.which_regex, [section], print_debug())
-            self.assertEqual(str(test_result), str(result), print_debug())
+                print('air_by_date:', test_result.is_air_by_date, 'air_date:', test_result.air_date)
+                print('anime:', test_result.is_anime, 'ab_episode_numbers:', test_result.ab_episode_numbers)
+                print(test_result)
+                print(result)
+            self.assertEqual(test_result.which_regex, [section], '{0} : {1} != {2}'.format(cur_test, test_result.which_regex, [section]))
+            self.assertEqual(six.text_type(test_result), six.text_type(result), '{0} : {1} != {2}'.format(cur_test, six.text_type(test_result), six.text_type(result)))
 
     def test_anime_sxxexx_file_names(self):
         """
@@ -512,30 +509,15 @@ class AnimeTests(test.SickChillTestDBCase):
         name_parser = parser.NameParser(parse_method='anime')
         self._test_names(name_parser, 'anime_SxxExx', lambda x: x + '.avi')
 
-    def test_anime_bare_file_names(self):
-        """
-        Test anime bare file names
-        """
-        name_parser = parser.NameParser(parse_method='anime')
-        self._test_names(name_parser, 'anime_bare', lambda x: x + '.avi')
-
-    @unittest.expectedFailure
-    def test_anime_bare_file_names_indirect(self):
-        """
-        Test anime bare file names without defining parse method
-        """
-        name_parser = parser.NameParser()
-        self._test_names(name_parser, 'anime_bare', lambda x: x + '.avi')
-
 
 # TODO: Make these work or document why they shouldn't
-class BasicFailedTests(test.SickChillTestDBCase):
+class BasicFailedTests(test.SickbeardTestDBCase):
     """
     Basic tests that currently fail
     """
     def __init__(self, something):
-        super().__init__(something)
-        super().setUp()
+        super(BasicFailedTests, self).__init__(something)
+        super(BasicFailedTests, self).setUp()
         self.show = tv.TVShow(1, 1, 'en')
 
     def _test_names(self, name_parser, section, transform=None, verbose=False):
@@ -571,17 +553,13 @@ class BasicFailedTests(test.SickChillTestDBCase):
                 result.which_regex = [section]
                 test_result = name_parser.parse(cur_test)
 
-            def print_debug():
-                print(f'{cur_test}:')
-                print(f'Test Result: {test_result}')
-                print(f'Expected Result: {result}')
-
             if DEBUG or verbose:
-                print_debug()
-
-            result.score = test_result.score  # Needed so we don't have to specify expected regex score in each test case.
-            self.assertEqual(test_result.which_regex, [section], print_debug())
-            self.assertEqual(str(test_result), str(result), print_debug())
+                print('air_by_date:', test_result.is_air_by_date, 'air_date:', test_result.air_date)
+                print('anime:', test_result.is_anime, 'ab_episode_numbers:', test_result.ab_episode_numbers)
+                print(test_result)
+                print(result)
+            self.assertEqual(test_result.which_regex, [section], '{0} : {1} != {2}'.format(cur_test, test_result.which_regex, [section]))
+            self.assertEqual(six.text_type(test_result), six.text_type(result), '{0} : {1} != {2}'.format(cur_test, six.text_type(test_result), six.text_type(result)))
 
     def test_no_s_names(self):
         """
@@ -652,7 +630,4 @@ if __name__ == '__main__':
     unittest.TextTestRunner(verbosity=2).run(SUITE)
 
     SUITE = unittest.TestLoader().loadTestsFromTestCase(FailureCaseTests)
-    unittest.TextTestRunner(verbosity=2).run(SUITE)
-
-    SUITE = unittest.TestLoader().loadTestsFromTestCase(AnimeTests)
     unittest.TextTestRunner(verbosity=2).run(SUITE)

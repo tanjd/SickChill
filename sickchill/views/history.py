@@ -1,9 +1,30 @@
-import sickchill.start
-from sickchill import settings
+# coding=utf-8
+# Author: Nic Wolfe <nic@wolfeden.ca>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# First Party Imports
+import sickbeard
+from sickbeard import ui
 from sickchill.helper import try_int
 from sickchill.show.History import History as HistoryTool
 
-from ..oldbeard import ui
+# Local Folder Imports
 from .common import PageTemplate
 from .index import WebRoot
 from .routes import Route
@@ -12,51 +33,52 @@ from .routes import Route
 @Route('/history(/?.*)', name='history')
 class History(WebRoot):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(History, self).__init__(*args, **kwargs)
 
         self.history = HistoryTool()
 
     def index(self, limit=None):
-        settings.HISTORY_LIMIT = limit = try_int(limit or settings.HISTORY_LIMIT or 100, 100)
-        sickchill.start.save_config()
+        sickbeard.HISTORY_LIMIT = limit = try_int(limit or sickbeard.HISTORY_LIMIT or 100, 100)
+        sickbeard.save_config()
 
         compact = []
         data = self.history.get(limit)
 
         for row in data:
             action = {
-                'action': row['action'],
-                'provider': row['provider'],
-                'resource': row['resource'],
-                'time': row['date']
+                'action': row[b'action'],
+                'provider': row[b'provider'],
+                'resource': row[b'resource'],
+                'time': row[b'date']
             }
 
-            if not any((history['show_id'] == row['show_id'] and
-                        history['season'] == row['season'] and
-                        history['episode'] == row['episode'] and
-                        history['quality'] == row['quality']) for history in compact):
+            # noinspection PyTypeChecker
+            if not any((history[b'show_id'] == row[b'show_id'] and
+                        history[b'season'] == row[b'season'] and
+                        history[b'episode'] == row[b'episode'] and
+                        history[b'quality'] == row[b'quality']) for history in compact):
                 history = {
                     'actions': [action],
-                    'episode': row['episode'],
-                    'quality': row['quality'],
-                    'resource': row['resource'],
-                    'season': row['season'],
-                    'show_id': row['show_id'],
-                    'show_name': row['show_name']
+                    'episode': row[b'episode'],
+                    'quality': row[b'quality'],
+                    'resource': row[b'resource'],
+                    'season': row[b'season'],
+                    'show_id': row[b'show_id'],
+                    'show_name': row[b'show_name']
                 }
 
                 compact.append(history)
             else:
                 index = [
                     i for i, item in enumerate(compact)
-                    if item['show_id'] == row['show_id'] and
-                    item['season'] == row['season'] and
-                    item['episode'] == row['episode'] and
-                    item['quality'] == row['quality']
+                    if item[b'show_id'] == row[b'show_id'] and
+                    item[b'season'] == row[b'season'] and
+                    item[b'episode'] == row[b'episode'] and
+                    item[b'quality'] == row[b'quality']
                 ][0]
                 history = compact[index]
-                history['actions'].append(action)
-                history['actions'].sort(key=lambda x: x['time'], reverse=True)
+                history[b'actions'].append(action)
+                history[b'actions'].sort(key=lambda x: x[b'time'], reverse=True)
 
         t = PageTemplate(rh=self, filename="history.mako")
         submenu = [

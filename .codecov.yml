@@ -50,8 +50,8 @@ coverage:
         if_ci_failed: failure
 
     ignore:          # files and folders that will be removed during processing
-      - "tests"
-      - "lib3"
+      - "tests/*"
+
 parsers:
   gcov:
     branch_detection:

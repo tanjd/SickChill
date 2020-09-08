@@ -1,6 +1,2 @@
 tests
 .github
-/build/
-/sickchill.egg-info/
-/.eggs/
-/dist/

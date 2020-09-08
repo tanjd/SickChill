@@ -1,29 +1,51 @@
+# coding=utf-8
+# Author: Nic Wolfe <nic@wolfeden.ca>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import base64
 import datetime
-import json
 import os
 import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from mimetypes import guess_type
 from operator import attrgetter
-from secrets import compare_digest
-from urllib.parse import urljoin
 
+# Third Party Imports
+import six
 from mako.lookup import Template
+from requests.compat import urljoin
 from tornado.concurrent import run_on_executor
 from tornado.escape import utf8, xhtml_escape
 from tornado.gen import coroutine
 from tornado.process import cpu_count
 from tornado.web import authenticated, HTTPError, RequestHandler
 
-import sickchill.start
-from sickchill import logger, settings
-from sickchill.init_helpers import locale_dir
+# First Party Imports
+import sickbeard
+from sickbeard import db, helpers, logger, network_timezones, ui
+from sickbeard.common import ek
 from sickchill.show.ComingEpisodes import ComingEpisodes
 from sickchill.views.routes import Route
 
-from ..oldbeard import db, helpers, network_timezones, ui
+# Local Folder Imports
 from .api.webapi import function_mapper
 from .common import PageTemplate
 
@@ -31,45 +53,55 @@ try:
     import jwt
     from jwt.algorithms import RSAAlgorithm as jwt_algorithms_RSAAlgorithm
     has_cryptography = True
-except Exception:
+except:
     has_cryptography = False
 
 
+
+try:
+    import json
+except ImportError:
+    # noinspection PyPackageRequirements,PyUnresolvedReferences
+    import simplejson as json
+
+
 class BaseHandler(RequestHandler):
+    startTime = 0.
+
     def data_received(self, chunk):
         pass
 
     def __init__(self, *args, **kwargs):
         self.startTime = time.time()
 
-        super().__init__(*args, **kwargs)
+        super(BaseHandler, self).__init__(*args, **kwargs)
         # self.include_host = True
 
     # def set_default_headers(self):
-    #     self.set_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+    #     self.set_header(b'Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
 
     def write_error(self, status_code, **kwargs):
         # handle 404 http errors
         if status_code == 404:
             url = self.request.uri
-            if settings.WEB_ROOT and self.request.uri.startswith(settings.WEB_ROOT):
-                url = url[len(settings.WEB_ROOT) + 1:]
+            if sickbeard.WEB_ROOT and self.request.uri.startswith(sickbeard.WEB_ROOT):
+                url = url[len(sickbeard.WEB_ROOT) + 1:]
 
             if url[:3] != 'api':
                 t = PageTemplate(rh=self, filename="404.mako")
-                return t.render(title='404', header=_('Oops: 404 Not Found'))
+                return self.finish(t.render(title='404', header=_('Oops: 404 Not Found')))
             else:
-                return self.finish(_('Wrong API key used'))
+                self.finish(_('Wrong API key used'))
 
         elif self.settings.get("debug") and "exc_info" in kwargs:
             exc_info = kwargs["exc_info"]
             trace_info = ''.join(["{0}<br>".format(line) for line in traceback.format_exception(*exc_info)])
             request_info = ''.join(["<strong>{0}</strong>: {1}<br>".format(k, self.request.__dict__[k]) for k in
-                                    self.request.__dict__])
+                                    self.request.__dict__.keys()])
             error = exc_info[1]
 
-            self.set_header('Content-Type', 'text/html')
-            return self.finish("""<html>
+            self.set_header(b'Content-Type', 'text/html')
+            self.finish("""<html>
                                  <title>{0}</title>
                                  <body>
                                     <h2>Error</h2>
@@ -80,7 +112,7 @@ class BaseHandler(RequestHandler):
                                     <p>{3}</p>
                                     <button onclick="window.location='{4}/errorlogs/';">View Log(Errors)</button>
                                  </body>
-                               </html>""".format(error, error, trace_info, request_info, settings.WEB_ROOT))
+                               </html>""".format(error, error, trace_info, request_info, sickbeard.WEB_ROOT))
 
     def redirect(self, url, permanent=False, status=None):
         """Sends a redirect to the given (optionally relative) URL.
@@ -92,8 +124,8 @@ class BaseHandler(RequestHandler):
         (temporary) is chosen based on the ``permanent`` argument.
         The default is 302 (temporary).
         """
-        if not url.startswith(settings.WEB_ROOT):
-            url = settings.WEB_ROOT + url
+        if not url.startswith(sickbeard.WEB_ROOT):
+            url = sickbeard.WEB_ROOT + url
 
         if self._headers_written:
             raise Exception("Cannot redirect after headers have been written")
@@ -103,22 +135,22 @@ class BaseHandler(RequestHandler):
             assert isinstance(status, int)
             assert 300 <= status <= 399
         self.set_status(status)
-        self.set_header("Location", urljoin(utf8(self.request.uri), utf8(url)))
+        self.set_header(b"Location", urljoin(utf8(self.request.uri), utf8(url)))
 
     def get_current_user(self):
         if isinstance(self, UI):
             return True
 
-        if settings.WEB_USERNAME and settings.WEB_PASSWORD:
+        if sickbeard.WEB_USERNAME and sickbeard.WEB_PASSWORD:
             # Authenticate using jwt for CF Access
             # NOTE: Setting a username and password is STILL required to protect poorly configured tunnels or firewalls
-            if settings.CF_AUTH_DOMAIN and settings.CF_POLICY_AUD and has_cryptography:
-                CERTS_URL = "{}/cdn-cgi/access/certs".format(settings.CF_AUTH_DOMAIN)
+            if sickbeard.CF_AUTH_DOMAIN and sickbeard.CF_POLICY_AUD and has_cryptography:
+                CERTS_URL = "{}/cdn-cgi/access/certs".format(sickbeard.CF_AUTH_DOMAIN)
                 if 'CF_Authorization' in self.request.cookies:
                     jwk_set = helpers.getURL(CERTS_URL, returns='json')
                     for key_dict in jwk_set['keys']:
                         public_key = jwt_algorithms_RSAAlgorithm.from_jwk(json.dumps(key_dict))
-                        if jwt.decode(self.request.cookies['CF_Authorization'], key=public_key, audience=settings.CF_POLICY_AUD):
+                        if jwt.decode(self.request.cookies['CF_Authorization'], key=public_key, audience=sickbeard.CF_POLICY_AUD):
                             return True
 
             # Logged into UI?
@@ -128,9 +160,9 @@ class BaseHandler(RequestHandler):
             # Basic Auth at a minimum
             auth_header = self.request.headers.get('Authorization')
             if auth_header and auth_header.startswith('Basic '):
-                auth_decoded = base64.decodebytes(auth_header[6:].encode()).decode()
+                auth_decoded = base64.decodestring(auth_header[6:])
                 username, password = auth_decoded.split(':', 2)
-                if compare_digest(username, settings.WEB_USERNAME) and compare_digest(password, settings.WEB_PASSWORD):
+                if username == sickbeard.WEB_USERNAME and password == sickbeard.WEB_PASSWORD:
                     return True
                 return False
 
@@ -140,12 +172,12 @@ class BaseHandler(RequestHandler):
             return helpers.is_ip_local(self.request.remote_ip.rsplit('%')[0])
 
     def get_user_locale(self):
-        return settings.GUI_LANG or None
+        return sickbeard.GUI_LANG or None
 
 
 class WebHandler(BaseHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(WebHandler, self).__init__(*args, **kwargs)
 
         self.executor = ThreadPoolExecutor(cpu_count(), thread_name_prefix='WEBSERVER-' + self.__class__.__name__.upper())
 
@@ -162,7 +194,7 @@ class WebHandler(BaseHandler):
             self.finish(results)
 
         except AttributeError:
-            logger.debug('Failed doing webui request "{0}": {1}'.format(route, traceback.format_exc()))
+            logger.log('Failed doing webui request "{0}": {1}'.format(route, traceback.format_exc()), logger.DEBUG)
             raise HTTPError(404)
 
     @run_on_executor
@@ -171,10 +203,10 @@ class WebHandler(BaseHandler):
             # TODO: Make all routes use get_argument so we can take advantage of tornado's argument sanitization, separate post and get, and get rid of this
             # nonsense loop so we can just yield the method directly
             kwargs = self.request.arguments
-            for arg, value in kwargs.items():
+            for arg, value in six.iteritems(kwargs):
                 if len(value) == 1:
                     kwargs[arg] = xhtml_escape(value[0])
-                elif isinstance(value, str):
+                elif isinstance(value, six.string_types):
                     kwargs[arg] = xhtml_escape(value)
                 elif isinstance(value, list):
                     kwargs[arg] = [xhtml_escape(v) for v in value]
@@ -183,10 +215,10 @@ class WebHandler(BaseHandler):
             return function(**kwargs)
         except TypeError:
             return function()
-        except OSError as error:
-            return Template("Looks like we do not have enough disk space to render the page! {error}").render_unicode(error=error)
+        except OSError as e:
+            return Template("Looks like we do not have enough disk space to render the page! {error}").render_unicode(data=e.message)
         except Exception:
-            logger.exception('Failed doing webui callback: {0}'.format((traceback.format_exc())))
+            logger.log('Failed doing webui callback: {0}'.format((traceback.format_exc())), logger.ERROR)
             raise
 
     # post uses get method
@@ -196,19 +228,19 @@ class WebHandler(BaseHandler):
 @Route('(.*)(/?)', name='index')
 class WebRoot(WebHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(WebRoot, self).__init__(*args, **kwargs)
 
     def index(self):
-        return self.redirect('/' + settings.DEFAULT_PAGE + '/')
+        return self.redirect('/' + sickbeard.DEFAULT_PAGE + '/')
 
     def robots_txt(self):
         """ Keep web crawlers out """
-        self.set_header('Content-Type', 'text/plain')
+        self.set_header(b'Content-Type', 'text/plain')
         return "User-agent: *\nDisallow: /"
 
     def apibuilder(self):
         main_db_con = db.DBConnection(row_type='dict')
-        shows = sorted(settings.showList, key=lambda mbr: attrgetter('sort_name')(mbr))
+        shows = sorted(sickbeard.showList, key=lambda mbr: attrgetter('sort_name')(mbr))
         episodes = {}
 
         results = main_db_con.select(
@@ -218,16 +250,16 @@ class WebRoot(WebHandler):
         )
 
         for result in results:
-            if result['showid'] not in episodes:
-                episodes[result['showid']] = {}
+            if result[b'showid'] not in episodes:
+                episodes[result[b'showid']] = {}
 
-            if result['season'] not in episodes[result['showid']]:
-                episodes[result['showid']][result['season']] = []
+            if result[b'season'] not in episodes[result[b'showid']]:
+                episodes[result[b'showid']][result[b'season']] = []
 
-            episodes[result['showid']][result['season']].append(result['episode'])
+            episodes[result[b'showid']][result[b'season']].append(result[b'episode'])
 
-        if len(settings.API_KEY) == 32:
-            apikey = settings.API_KEY
+        if len(sickbeard.API_KEY) == 32:
+            apikey = sickbeard.API_KEY
         else:
             apikey = _('API Key not generated')
 
@@ -240,7 +272,7 @@ class WebRoot(WebHandler):
         if layout not in ('poster', 'small', 'banner', 'simple', 'coverflow'):
             layout = 'poster'
 
-        settings.HOME_LAYOUT = layout
+        sickbeard.HOME_LAYOUT = layout
         # Don't redirect to default page so user can see new layout
         return self.redirect("/home/")
 
@@ -249,27 +281,27 @@ class WebRoot(WebHandler):
         if sort not in ('name', 'date', 'network', 'progress'):
             sort = 'name'
 
-        settings.POSTER_SORTBY = sort
-        sickchill.start.save_config()
+        sickbeard.POSTER_SORTBY = sort
+        sickbeard.save_config()
 
     def setPosterSortDir(self):
         direction = self.get_query_argument('direction')
 
-        settings.POSTER_SORTDIR = int(direction)
-        sickchill.start.save_config()
+        sickbeard.POSTER_SORTDIR = int(direction)
+        sickbeard.save_config()
 
     def setHistoryLayout(self):
         layout = self.get_query_argument('layout')
         if layout not in ('compact', 'detailed'):
             layout = 'detailed'
 
-        settings.HISTORY_LAYOUT = layout
+        sickbeard.HISTORY_LAYOUT = layout
 
         return self.redirect("/history/")
 
     def toggleDisplayShowSpecials(self):
         show = self.get_query_argument('show')
-        settings.DISPLAY_SHOW_SPECIALS = not settings.DISPLAY_SHOW_SPECIALS
+        sickbeard.DISPLAY_SHOW_SPECIALS = not sickbeard.DISPLAY_SHOW_SPECIALS
 
         return self.redirect("/home/displayShow?show=" + show)
 
@@ -279,43 +311,43 @@ class WebRoot(WebHandler):
             layout = 'banner'
 
         if layout == 'calendar':
-            settings.COMING_EPS_SORT = 'date'
+            sickbeard.COMING_EPS_SORT = 'date'
 
-        settings.COMING_EPS_LAYOUT = layout
+        sickbeard.COMING_EPS_LAYOUT = layout
 
         return self.redirect("/schedule/")
 
     def toggleScheduleDisplayPaused(self):
 
-        settings.COMING_EPS_DISPLAY_PAUSED = not settings.COMING_EPS_DISPLAY_PAUSED
+        sickbeard.COMING_EPS_DISPLAY_PAUSED = not sickbeard.COMING_EPS_DISPLAY_PAUSED
 
         return self.redirect("/schedule/")
 
     def toggleScheduleDisplaySnatched(self):
 
-        settings.COMING_EPS_DISPLAY_SNATCHED = not settings.COMING_EPS_DISPLAY_SNATCHED
+        sickbeard.COMING_EPS_DISPLAY_SNATCHED = not sickbeard.COMING_EPS_DISPLAY_SNATCHED
 
         return self.redirect("/schedule/")
 
     def setScheduleSort(self):
         sort = self.get_query_argument('sort')
-        if sort not in ('date', 'network', 'show') or settings.COMING_EPS_LAYOUT == 'calendar':
+        if sort not in ('date', 'network', 'show') or sickbeard.COMING_EPS_LAYOUT == 'calendar':
             sort = 'date'
 
-        settings.COMING_EPS_SORT = sort
+        sickbeard.COMING_EPS_SORT = sort
 
         return self.redirect("/schedule/")
 
     def schedule(self):
-        layout = self.get_query_argument('layout', settings.COMING_EPS_LAYOUT)
+        layout = self.get_query_argument('layout', sickbeard.COMING_EPS_LAYOUT)
         next_week = datetime.date.today() + datetime.timedelta(days=7)
         next_week1 = datetime.datetime.combine(next_week, datetime.time(tzinfo=network_timezones.sb_timezone))
-        results = ComingEpisodes.get_coming_episodes(ComingEpisodes.categories, settings.COMING_EPS_SORT, False)
+        results = ComingEpisodes.get_coming_episodes(ComingEpisodes.categories, sickbeard.COMING_EPS_SORT, False)
         today = datetime.datetime.now().replace(tzinfo=network_timezones.sb_timezone)
 
         # Allow local overriding of layout parameter
         if layout not in ('poster', 'banner', 'list', 'calendar'):
-            layout = settings.COMING_EPS_LAYOUT
+            layout = sickbeard.COMING_EPS_LAYOUT
 
         t = PageTemplate(rh=self, filename='schedule.mako')
         return t.render(next_week=next_week1, today=today, results=results, layout=layout,
@@ -326,16 +358,16 @@ class WebRoot(WebHandler):
 @Route('/ui(/?.*)', name='ui')
 class UI(WebRoot):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(UI, self).__init__(*args, **kwargs)
 
     def locale_json(self):
         """ Get /locale/{lang_code}/LC_MESSAGES/messages.json """
-        locale_file = os.path.normpath('{locale_dir}/{lang}/LC_MESSAGES/messages.json'.format(
-            locale_dir=locale_dir(), lang=settings.GUI_LANG))
+        locale_file = ek(os.path.normpath, '{locale_dir}/{lang}/LC_MESSAGES/messages.json'.format(
+            locale_dir=sickbeard.LOCALE_DIR, lang=sickbeard.GUI_LANG))
 
         if os.path.isfile(locale_file):
-            self.set_header('Content-Type', 'application/json')
-            with open(locale_file) as content:
+            self.set_header(b'Content-Type', 'application/json')
+            with open(locale_file, 'r') as content:
                 return content.read()
         else:
             self.set_status(204)  # "No Content"
@@ -349,8 +381,8 @@ class UI(WebRoot):
         return "ok"
 
     def get_messages(self):
-        self.set_header('Cache-Control', 'max-age=0,no-cache,no-store')
-        self.set_header('Content-Type', 'application/json')
+        self.set_header(b'Cache-Control', 'max-age=0,no-cache,no-store')
+        self.set_header(b'Content-Type', 'application/json')
         notifications = ui.notifications.get_notifications(self.request.remote_ip)
         messages = {}
         for index, cur_notification in enumerate(notifications, 1):
@@ -367,36 +399,37 @@ class UI(WebRoot):
         message = self.get_body_argument('message', None)
         tag = self.get_body_argument('tag', None)
         level = self.get_body_argument('level')
-        self.set_header('Cache-Control', 'max-age=0,no-cache,no-store')
+        self.set_header(b'Cache-Control', 'max-age=0,no-cache,no-store')
         if message:
             helpers.add_site_message(message, tag=tag, level=level)
         else:
-            if settings.BRANCH and self.get_current_user() and settings.BRANCH not in ('master', 'pip') and not settings.DEVELOPER:
-                message = _(f"You're using the {settings.BRANCH} branch. Please use 'master' unless specifically asked")
+            if sickbeard.BRANCH and sickbeard.BRANCH != 'master' and not sickbeard.DEVELOPER and self.get_current_user():
+                message = _('You\'re using the {branch} branch. '
+                            'Please use \'master\' unless specifically asked').format(branch=sickbeard.BRANCH)
                 helpers.add_site_message(message, tag='not_using_master_branch', level='danger')
 
-        return settings.SITE_MESSAGES
+        return sickbeard.SITE_MESSAGES
 
     def get_site_messages(self):
-        self.set_header('Cache-Control', 'max-age=0,no-cache,no-store')
-        return settings.SITE_MESSAGES
+        self.set_header(b'Cache-Control', 'max-age=0,no-cache,no-store')
+        return sickbeard.SITE_MESSAGES
 
     def dismiss_site_message(self):
         index = self.get_query_argument('index')
-        self.set_header('Cache-Control', 'max-age=0,no-cache,no-store')
+        self.set_header(b'Cache-Control', 'max-age=0,no-cache,no-store')
         helpers.remove_site_message(key=index)
-        return settings.SITE_MESSAGES
+        return sickbeard.SITE_MESSAGES
 
     def sickchill_background(self):
-        if settings.SICKCHILL_BACKGROUND_PATH and os.path.isfile(settings.SICKCHILL_BACKGROUND_PATH):
-            self.set_header('Content-Type', guess_type(settings.SICKCHILL_BACKGROUND_PATH)[0])
-            with open(settings.SICKCHILL_BACKGROUND_PATH, 'rb') as content:
+        if sickbeard.SICKCHILL_BACKGROUND_PATH and ek(os.path.isfile, sickbeard.SICKCHILL_BACKGROUND_PATH):
+            self.set_header(b'Content-Type', guess_type(sickbeard.SICKCHILL_BACKGROUND_PATH)[0])
+            with open(sickbeard.SICKCHILL_BACKGROUND_PATH, 'rb') as content:
                 return content.read()
         return None
 
     def custom_css(self):
-        if settings.CUSTOM_CSS_PATH and os.path.isfile(settings.CUSTOM_CSS_PATH):
-            self.set_header('Content-Type', 'text/css')
-            with open(settings.CUSTOM_CSS_PATH, 'r') as content:
+        if sickbeard.CUSTOM_CSS_PATH and ek(os.path.isfile, sickbeard.CUSTOM_CSS_PATH):
+            self.set_header(b'Content-Type', 'text/css')
+            with open(sickbeard.CUSTOM_CSS_PATH, 'r') as content:
                 return content.read()
         return None

@@ -89,7 +89,7 @@ module.exports = function(grunt) {
         clean: {
             dist: './dist/',
             'bower_components': './bower_components',
-            fonts: './sickchill/gui/slick/css/fonts',
+            fonts: './gui/slick/css/fonts',
             options: {
                 force: true
             }
@@ -151,33 +151,7 @@ module.exports = function(grunt) {
                     src: [
                         'fonts/**/*'
                     ],
-                    dest: './sickchill/gui/slick/css/'
-                }]
-            },
-            'fork-awesome': {
-                files: [{
-                    expand: true,
-                    dot: true,
-                    cwd: 'bower_components/fork-awesome',
-                    src: [
-                        'fonts/**/*',
-                        'css/**/*.min.css',
-                        'css/**/*.css.map'
-                    ],
-                    dest: './sickchill/gui/slick/'
-                }]
-            },
-            'font-awesome': {
-                files: [{
-                    expand: true,
-                    dot: true,
-                    cwd: 'bower_components/font-awesome',
-                    src: [
-                        'fonts/**/*',
-                        'css/**/*.min.css',
-                        'css/**/*.css.map'
-                    ],
-                    dest: './sickchill/gui/slick/'
+                    dest: './gui/slick/css/'
                 }]
             },
             glyphicon: {
@@ -192,19 +166,19 @@ module.exports = function(grunt) {
                         '*.woff',
                         '*.woff2'
                     ],
-                    dest: './sickchill/gui/slick/fonts/'
+                    dest: './gui/slick/fonts/'
                 }]
             }
         },
         uglify: {
             bower: {
                 files: {
-                    './sickchill/gui/slick/js/vendor.min.js': ['./dist/bower.js']
+                    './gui/slick/js/vendor.min.js': ['./dist/bower.js']
                 }
             },
             core: {
                 files: {
-                    './sickchill/gui/slick/js/core.min.js': ['./sickchill/gui/slick/js/core.js']
+                    './gui/slick/js/core.min.js': ['./gui/slick/js/core.js']
                 }
             }
         },
@@ -215,12 +189,12 @@ module.exports = function(grunt) {
             },
             bower: {
                 files: {
-                    './sickchill/gui/slick/css/vendor.min.css': ['./dist/bower.css']
+                    './gui/slick/css/vendor.min.css': ['./dist/bower.css']
                 }
             },
             core: {
                 files: {
-                    './sickchill/gui/slick/css/core.min.css': ['./dist/core.css']
+                    './gui/slick/css/core.min.css': ['./dist/core.css']
                 }
             }
         },
@@ -232,7 +206,7 @@ module.exports = function(grunt) {
                 },
                 files: [{
                     expand: true,
-                    src: 'sickchill/locale/*/LC_MESSAGES/messages.po',
+                    src: './locale/*/LC_MESSAGES/messages.po',
                     dest: '',
                     ext: '' // workaround for relative files
                 }]
@@ -259,7 +233,7 @@ module.exports = function(grunt) {
             'commit_changed_files': { // Choose what to commit.
                 cmd: function(travis) {
                     grunt.config('stop_no_changes', Boolean(travis));
-                    return 'git status -s -- sickchill/locale/ sickchill/gui/';
+                    return 'git status -s -- locale/ gui/';
                 },
                 stdout: false,
                 callback: function(err, stdout) {
@@ -270,14 +244,14 @@ module.exports = function(grunt) {
 
                     var commitMsg = [];
                     var commitPaths = [];
-                    if (stdout.match(/sickchill\/gui\/.*(vendor|core)\.min\.(js|css)$/gm)) {
+                    if (stdout.match(/gui\/.*(vendor|core)\.min\.(js|css)$/gm)) {
                         commitMsg.push('Grunt');
-                        commitPaths.push('sickchill/gui/**/vendor.min.*');
-                        commitPaths.push('sickchill/gui/**/core.min.*');
+                        commitPaths.push('gui/**/vendor.min.*');
+                        commitPaths.push('gui/**/core.min.*');
                     }
-                    if (stdout.match(/sickchill\/locale\/.*(pot|po|mo|json)$/gm)) {
+                    if (stdout.match(/locale\/.*(pot|po|mo|json)$/gm)) {
                         commitMsg.push('Update translations');
-                        commitPaths.push('sickchill/locale/');
+                        commitPaths.push('locale/');
                     }
 
                     if (!commitMsg.length || !commitPaths.length) {

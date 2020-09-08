@@ -1,23 +1,54 @@
-import json
+# coding=utf-8
+# Author: Nic Wolfe <nic@wolfeden.ca>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import ntpath
 import os
 import posixpath
 
-from sickchill import logger, settings
+# Third Party Imports
+import six
+
+# First Party Imports
+import sickbeard
+from sickbeard import db, logger, subtitles as subtitle_module, ui
+from sickbeard.common import Overview, Quality, SNATCHED
 from sickchill.helper import episode_num, try_int
+from sickchill.helper.encoding import ek
 from sickchill.helper.exceptions import CantRefreshShowException, CantUpdateShowException
-from sickchill.oldbeard import db, subtitles as subtitle_module, ui
-from sickchill.oldbeard.common import Overview, Quality, SNATCHED
 from sickchill.show.Show import Show
 from sickchill.views.common import PageTemplate
 from sickchill.views.home import Home, WebRoot
 from sickchill.views.routes import Route
 
+try:
+    import json
+except ImportError:
+    # noinspection PyPackageRequirements,PyUnresolvedReferences
+    import simplejson as json
+
 
 @Route('/manage(/?.*)', name='manage:main')
 class Manage(Home, WebRoot):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(Manage, self).__init__(*args, **kwargs)
 
     def index(self, *args, **kwargs):
         t = PageTemplate(rh=self, filename="manage.mako")
@@ -36,13 +67,13 @@ class Manage(Home, WebRoot):
 
         result = {}
         for cur_result in cur_show_results:
-            cur_season = int(cur_result["season"])
-            cur_episode = int(cur_result["episode"])
+            cur_season = int(cur_result[b"season"])
+            cur_episode = int(cur_result[b"episode"])
 
             if cur_season not in result:
                 result[cur_season] = {}
 
-            result[cur_season][cur_episode] = cur_result["name"]
+            result[cur_season][cur_episode] = cur_result[b"name"]
 
         return json.dumps(result)
 
@@ -73,13 +104,13 @@ class Manage(Home, WebRoot):
         show_names = {}
         sorted_show_ids = []
         for cur_status_result in status_results:
-            cur_indexer_id = int(cur_status_result["indexer_id"])
+            cur_indexer_id = int(cur_status_result[b"indexer_id"])
             if cur_indexer_id not in ep_counts:
                 ep_counts[cur_indexer_id] = 1
             else:
                 ep_counts[cur_indexer_id] += 1
 
-            show_names[cur_indexer_id] = cur_status_result["show_name"]
+            show_names[cur_indexer_id] = cur_status_result[b"show_name"]
             if cur_indexer_id not in sorted_show_ids:
                 sorted_show_ids.append(cur_indexer_id)
 
@@ -118,7 +149,7 @@ class Manage(Home, WebRoot):
                 all_eps_results = main_db_con.select(
                     "SELECT season, episode FROM tv_episodes WHERE status IN ({0}) AND season != 0 AND showid = ?".format(','.join(['?'] * len(status_list))),
                     status_list + [cur_indexer_id])
-                all_eps = [str(x["season"]) + 'x' + str(x["episode"]) for x in all_eps_results]
+                all_eps = [str(x[b"season"]) + 'x' + str(x[b"episode"]) for x in all_eps_results]
                 to_change[cur_indexer_id] = all_eps
 
             self.setStatus(cur_indexer_id, '|'.join(to_change[cur_indexer_id]), newStatus, direct=True)
@@ -130,17 +161,17 @@ class Manage(Home, WebRoot):
         main_db_con = db.DBConnection()
         cur_show_results = main_db_con.select(
             "SELECT season, episode, name, subtitles FROM tv_episodes WHERE showid = ? {0} AND (status LIKE '%4' OR status LIKE '%6') and "
-            "location != ''".format(("AND season != 0 ", "")[settings.SUBTITLES_INCLUDE_SPECIALS]), [int(indexer_id)])
+            "location != ''".format(("AND season != 0 ", "")[sickbeard.SUBTITLES_INCLUDE_SPECIALS]), [int(indexer_id)])
         result = {}
         for cur_result in cur_show_results:
             if whichSubs == 'all':
-                if not frozenset(subtitle_module.wanted_languages()).difference(cur_result["subtitles"].split(',')):
+                if not frozenset(subtitle_module.wanted_languages()).difference(cur_result[b"subtitles"].split(',')):
                     continue
-            elif whichSubs in cur_result["subtitles"]:
+            elif whichSubs in cur_result[b"subtitles"]:
                 continue
 
-            cur_season = int(cur_result["season"])
-            cur_episode = int(cur_result["episode"])
+            cur_season = int(cur_result[b"season"])
+            cur_episode = int(cur_result[b"episode"])
 
             if cur_season not in result:
                 result[cur_season] = {}
@@ -148,9 +179,9 @@ class Manage(Home, WebRoot):
             if cur_episode not in result[cur_season]:
                 result[cur_season][cur_episode] = {}
 
-            result[cur_season][cur_episode]["name"] = cur_result["name"]
+            result[cur_season][cur_episode]["name"] = cur_result[b"name"]
 
-            result[cur_season][cur_episode]["subtitles"] = cur_result["subtitles"]
+            result[cur_season][cur_episode]["subtitles"] = cur_result[b"subtitles"]
 
         return json.dumps(result)
 
@@ -175,18 +206,18 @@ class Manage(Home, WebRoot):
         sorted_show_ids = []
         for cur_status_result in status_results:
             if whichSubs == 'all':
-                if not frozenset(subtitle_module.wanted_languages()).difference(cur_status_result["subtitles"].split(',')):
+                if not frozenset(subtitle_module.wanted_languages()).difference(cur_status_result[b"subtitles"].split(',')):
                     continue
-            elif whichSubs in cur_status_result["subtitles"]:
+            elif whichSubs in cur_status_result[b"subtitles"]:
                 continue
 
-            cur_indexer_id = int(cur_status_result["indexer_id"])
+            cur_indexer_id = int(cur_status_result[b"indexer_id"])
             if cur_indexer_id not in ep_counts:
                 ep_counts[cur_indexer_id] = 1
             else:
                 ep_counts[cur_indexer_id] += 1
 
-            show_names[cur_indexer_id] = cur_status_result["show_name"]
+            show_names[cur_indexer_id] = cur_status_result[b"show_name"]
             if cur_indexer_id not in sorted_show_ids:
                 sorted_show_ids.append(cur_indexer_id)
 
@@ -217,22 +248,22 @@ class Manage(Home, WebRoot):
                 main_db_con = db.DBConnection()
                 all_eps_results = main_db_con.select(
                     "SELECT season, episode FROM tv_episodes WHERE (status LIKE '%4' OR status LIKE '%6') {0} AND showid = ? AND location != ''".format(
-                        ("AND season != 0 ", "")[settings.SUBTITLES_INCLUDE_SPECIALS]), [cur_indexer_id])
-                to_download[cur_indexer_id] = [str(x["season"]) + 'x' + str(x["episode"]) for x in all_eps_results]
+                        ("AND season != 0 ", "")[sickbeard.SUBTITLES_INCLUDE_SPECIALS]), [cur_indexer_id])
+                to_download[cur_indexer_id] = [str(x[b"season"]) + 'x' + str(x[b"episode"]) for x in all_eps_results]
 
             for epResult in to_download[cur_indexer_id]:
                 season, episode = epResult.split('x')
 
-                show = Show.find(settings.showList, int(cur_indexer_id))
+                show = Show.find(sickbeard.showList, int(cur_indexer_id))
                 show.getEpisode(season, episode).download_subtitles()
 
         return self.redirect('/manage/subtitleMissed/')
 
     def backlogShow(self, indexer_id):
-        show_obj = Show.find(settings.showList, int(indexer_id))
+        show_obj = Show.find(sickbeard.showList, int(indexer_id))
 
         if show_obj:
-            settings.backlogSearchScheduler.action.searchBacklog([show_obj])
+            sickbeard.backlogSearchScheduler.action.searchBacklog([show_obj])
 
         return self.redirect("/manage/backlogOverview/")
 
@@ -244,7 +275,7 @@ class Manage(Home, WebRoot):
         showSQLResults = {}
 
         main_db_con = db.DBConnection()
-        for curShow in settings.showList:
+        for curShow in sickbeard.showList:
 
             epCounts = {
                 Overview.SKIPPED: 0,
@@ -265,41 +296,29 @@ class Manage(Home, WebRoot):
                 [curShow.indexerid])
 
             for curResult in sql_results:
-                curEpCat = curShow.getOverview(curResult["status"], backlog=settings.BACKLOG_MISSING_ONLY)
+                curEpCat = curShow.getOverview(curResult[b"status"], backlog=sickbeard.BACKLOG_MISSING_ONLY)
                 if curEpCat:
 
-                    epCats['{ep}'.format(ep=episode_num(curResult['season'], curResult['episode']))] = curEpCat
+                    epCats['{ep}'.format(ep=episode_num(curResult[b'season'], curResult[b'episode']))] = curEpCat
                     epCounts[curEpCat] += 1
 
             showCounts[curShow.indexerid] = epCounts
             showCats[curShow.indexerid] = epCats
             showSQLResults[curShow.indexerid] = sql_results
 
-        def showQualSnatched(show):
-            return Quality.splitQuality(show.quality)[1]
-
-        totalWanted = totalQual = totalQualSnatched = 0
-        backLogShows = sorted([x for x in settings.showList if showCounts[x.indexerid][Overview.QUAL] + showCounts[x.indexerid][Overview.WANTED] + (0, showCounts[x.indexerid][Overview.SNATCHED])[len(showQualSnatched(x)) > 0]], key=lambda x: x.sort_name)
-        for curShow in backLogShows:
-            totalWanted += showCounts[curShow.indexerid][Overview.WANTED]
-            totalQual += showCounts[curShow.indexerid][Overview.QUAL]
-            if showQualSnatched(curShow):
-                totalQualSnatched += showCounts[curShow.indexerid][Overview.SNATCHED]
-
         return t.render(
-            showCounts=showCounts, showCats=showCats, totalQual=totalQual, showQualSnatched=showQualSnatched,
-            totalWanted=totalWanted, totalQualSnatched=totalQualSnatched, backLogShows=backLogShows,
+            showCounts=showCounts, showCats=showCats,
             showSQLResults=showSQLResults, controller='manage',
             action='backlogOverview', title=_('Backlog Overview'),
             header=_('Backlog Overview'), topmenu='manage')
 
     @staticmethod
     def __gooey_path(name, method):
-        result = getattr(os.path, method)(name)
+        result = ek(getattr(os.path, method), name)
         if result == name or not result:
-            result = getattr(ntpath, method)(name)
+            result = ek(getattr(ntpath, method), name)
             if result == name or not result:
-                result = getattr(posixpath, method)(name)
+                result = ek(getattr(posixpath, method), name)
 
         return result
 
@@ -315,7 +334,7 @@ class Manage(Home, WebRoot):
         showNames = []
         for curID in showIDs:
             curID = int(curID)
-            show_obj = Show.find(settings.showList, curID)
+            show_obj = Show.find(sickbeard.showList, curID)
             if show_obj:
                 showList.append(show_obj)
                 showNames.append(show_obj.name)
@@ -434,22 +453,22 @@ class Manage(Home, WebRoot):
                        subtitles=None, air_by_date=None, anyQualities=None, bestQualities=None, toEdit=None, *args,
                        **kwargs):
         dir_map = {}
-        for cur_arg in [x for x in kwargs if x.startswith('orig_root_dir_')]:
-            dir_map[kwargs[cur_arg]] = kwargs[cur_arg.replace('orig_root_dir_', 'new_root_dir_')]
+        for cur_arg in filter(lambda x: x.startswith('orig_root_dir_'), kwargs):
+            dir_map[kwargs[cur_arg]] = ek(six.text_type, kwargs[cur_arg.replace('orig_root_dir_', 'new_root_dir_')], 'utf-8')
 
         showIDs = toEdit.split("|")
         errors = []
         for curShow in showIDs:
             curErrors = []
-            show_obj = Show.find(settings.showList, int(curShow or 0))
+            show_obj = Show.find(sickbeard.showList, int(curShow or 0))
             if not show_obj:
                 continue
 
             cur_root_dir = self.__gooey_path(show_obj._location, 'dirname')
             cur_show_dir = self.__gooey_path(show_obj._location, 'basename')
             if cur_root_dir and dir_map.get(cur_root_dir) and cur_root_dir != dir_map.get(cur_root_dir):
-                new_show_dir = os.path.join(dir_map[cur_root_dir], cur_show_dir)
-                logger.info("For show " + show_obj.name + " changing dir from " + show_obj._location + " to " + new_show_dir)
+                new_show_dir = ek(os.path.join, dir_map[cur_root_dir], cur_show_dir)
+                logger.log("For show " + show_obj.name + " changing dir from " + show_obj._location + " to " + new_show_dir)
             else:
                 new_show_dir = show_obj._location
 
@@ -479,7 +498,7 @@ class Manage(Home, WebRoot):
                                        directCall=True)
 
             if curErrors:
-                logger.exception("Errors: " + str(curErrors))
+                logger.log("Errors: " + str(curErrors), logger.ERROR)
                 errors.append('<b>{0}:</b>\n<ul>'.format(show_obj.name) + ' '.join(
                     ['<li>{0}</li>'.format(error) for error in curErrors]) + "</ul>")
 
@@ -513,23 +532,23 @@ class Manage(Home, WebRoot):
             if curShowID == '':
                 continue
 
-            show_obj = Show.find(settings.showList, int(curShowID))
+            show_obj = Show.find(sickbeard.showList, int(curShowID))
             if not show_obj:
                 continue
 
             if curShowID in toDelete:
-                settings.showQueueScheduler.action.remove_show(show_obj, True)
+                sickbeard.showQueueScheduler.action.remove_show(show_obj, True)
                 # don't do anything else if it's being deleted
                 continue
 
             if curShowID in toRemove:
-                settings.showQueueScheduler.action.remove_show(show_obj)
+                sickbeard.showQueueScheduler.action.remove_show(show_obj)
                 # don't do anything else if it's being remove
                 continue
 
             if curShowID in toUpdate:
                 try:
-                    settings.showQueueScheduler.action.update_show(show_obj, True)
+                    sickbeard.showQueueScheduler.action.update_show(show_obj, True)
                     updates.append(show_obj.name)
                 except CantUpdateShowException as e:
                     errors.append(_("Unable to update show: {exception_format}").format(exception_format=e))
@@ -537,17 +556,17 @@ class Manage(Home, WebRoot):
             # don't bother refreshing shows that were updated anyway
             if curShowID in toRefresh and curShowID not in toUpdate:
                 try:
-                    settings.showQueueScheduler.action.refresh_show(show_obj, force=True)
+                    sickbeard.showQueueScheduler.action.refresh_show(show_obj, force=True)
                     refreshes.append(show_obj.name)
                 except CantRefreshShowException as e:
                     errors.append(_("Unable to refresh show {show_name}: {exception_format}").format(show_name=show_obj.name, exception_format=e))
 
             if curShowID in toRename:
-                settings.showQueueScheduler.action.rename_show_episodes(show_obj)
+                sickbeard.showQueueScheduler.action.rename_show_episodes(show_obj)
                 renames.append(show_obj.name)
 
             if curShowID in toSubtitle:
-                settings.showQueueScheduler.action.download_subtitles(show_obj)
+                sickbeard.showQueueScheduler.action.download_subtitles(show_obj)
                 subtitles.append(show_obj.name)
 
         if errors:

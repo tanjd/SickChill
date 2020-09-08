@@ -1,5 +1,26 @@
-from sickchill import settings
-from sickchill.oldbeard.event_queue import Events
+# coding=utf-8
+# This file is part of SickChill.
+#
+# URL: https://sickchill.github.io
+# Git: https://github.com/SickChill/SickChill.git
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# First Party Imports
+import sickbeard
+from sickbeard.event_queue import Events
 
 
 class Restart(object):
@@ -8,9 +29,9 @@ class Restart(object):
 
     @staticmethod
     def restart(pid):
-        if str(pid) != str(settings.PID):
+        if str(pid) != str(sickbeard.PID):
             return False
 
-        settings.events.put(Events.SystemEvent.RESTART)
+        sickbeard.events.put(Events.SystemEvent.RESTART)
 
         return True

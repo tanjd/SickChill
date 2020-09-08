@@ -1,10 +1,32 @@
+# coding=utf-8
+# Author: Nic Wolfe <nic@wolfeden.ca>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Third Party Imports
 from tornado.web import addslash
 
-import sickchill.oldbeard
+# First Party Imports
+import sickbeard
+from sickbeard import classes, logger, ui
 from sickchill.helper import try_int
 
-from .. import logger
-from ..oldbeard import classes, ui
+# Local Folder Imports
 from .common import PageTemplate
 from .index import WebRoot
 from .routes import Route
@@ -13,7 +35,7 @@ from .routes import Route
 @Route('/errorlogs(/?.*)', name='logs:error')
 class ErrorLogs(WebRoot):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(ErrorLogs, self).__init__(*args, **kwargs)
 
     def __ErrorLogsMenu(self, level):
         menu = [
@@ -25,7 +47,7 @@ class ErrorLogs(WebRoot):
             },
             {
                 'title': _('Clear Warnings'),
-                'path': f'errorlogs/clearerrors/?level={logger.WARNING}',
+                'path': 'errorlogs/clearerrors/?level=' + str(logger.WARNING),
                 'requires': self.haveWarnings() and level == logger.WARNING,
                 'icon': 'ui-icon ui-icon-trash'
             },
@@ -43,7 +65,7 @@ class ErrorLogs(WebRoot):
 
     @addslash
     def index(self):
-        level = try_int(self.get_query_argument('level', str(logger.ERROR)), logger.ERROR)
+        level = try_int(self.get_query_argument('level', logger.ERROR), logger.ERROR)
 
         t = PageTemplate(rh=self, filename="errorlogs.mako")
         return t.render(header=_("Logs &amp; Errors"), title=_("Logs &amp; Errors"),
@@ -59,7 +81,7 @@ class ErrorLogs(WebRoot):
         return len(classes.WarningViewer.errors) > 0
 
     def clearerrors(self):
-        level = try_int(self.get_query_argument('level', str(logger.ERROR)), logger.ERROR)
+        level = try_int(self.get_query_argument('level', logger.ERROR), logger.ERROR)
         if int(level) == logger.WARNING:
             classes.WarningViewer.clear()
         else:
@@ -68,11 +90,11 @@ class ErrorLogs(WebRoot):
         return self.redirect("/errorlogs/viewlog/")
 
     def viewlog(self):
-        min_level = try_int(self.get_body_argument('min_level', str(logger.INFO)), logger.INFO)
+        min_level = try_int(self.get_body_argument('min_level', logger.INFO), logger.INFO)
         log_filter = self.get_body_argument('log_filter', "<NONE>")
         log_search = self.get_body_argument('log_search', '')
-        max_lines = try_int(self.get_body_argument('max_lines', str(500)), 500)
-        data = sickchill.logger.log_data(min_level, log_filter, log_search, max_lines)
+        max_lines = try_int(self.get_body_argument('max_lines', 500), 500)
+        data = sickbeard.logger.log_data(min_level, log_filter, log_search, max_lines)
 
         t = PageTemplate(rh=self, filename="viewlogs.mako")
         return t.render(
@@ -83,8 +105,7 @@ class ErrorLogs(WebRoot):
 
     def submit_errors(self):
         submitter_result, issue_id = logger.submit_errors()
-        log = logger.info if issue_id else logger.warning
-        log(submitter_result)
+        logger.log(submitter_result, (logger.INFO, logger.WARNING)[not issue_id])
         submitter_notification = ui.notifications.error if not issue_id else ui.notifications.message
         submitter_notification(submitter_result)
 

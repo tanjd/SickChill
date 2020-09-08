@@ -1,3 +1,5 @@
+# coding=utf-8
+
 """
 Test the SR API
 """
@@ -124,9 +126,9 @@ class APITestShow(unittest.TestCase):
         pass
 
 
-class APITestSickChill(unittest.TestCase):
+class APITestSickBeard(unittest.TestCase):
     @unittest.skip('Not yet implemented')
-    def test_sickchill(self):
+    def test_sickbeard(self):
         pass
 
     @unittest.skip('Not yet implemented')
@@ -239,7 +241,7 @@ class APITestMisc(unittest.TestCase):
 
 
 TEST_CLASSES = {
-    APITestEpisodes, APITestHistory, APITestMisc, APITestShow, APITestShows, APITestSickChill
+    APITestEpisodes, APITestHistory, APITestMisc, APITestShow, APITestShows, APITestSickBeard
 }
 
 

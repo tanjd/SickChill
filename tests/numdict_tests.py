@@ -1,7 +1,23 @@
-import unittest
-from collections import UserDict
+# coding=utf-8
 
-from sickchill.oldbeard.numdict import NumDict
+"""
+Unit Tests for sickbeard/numdict.py
+"""
+
+
+from __future__ import print_function, unicode_literals
+
+import os.path
+import sys
+import unittest
+
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib')))
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from sickbeard.numdict import NumDict
+
+import six
+from six.moves import UserDict
 
 
 class NumDictTest(unittest.TestCase):
@@ -20,7 +36,7 @@ class NumDictTest(unittest.TestCase):
         dict_4 = {'3': 'Aardvark', '4': 'Ant'}  # Multiple numeric string keys
         dict_5 = {5: 'Cat', '6': 'Dog'}  # Mixed numeric and numeric string keys
         dict_6 = {1: None, '2': None}  # None as values
-        dict_7 = {0: 'Empty'}  # None as key
+        dict_7 = {None: 'Empty'}  # None as key
 
         # Construct NumDicts from dicts
         num_dict = NumDict()
@@ -45,6 +61,7 @@ class NumDictTest(unittest.TestCase):
         self.assertNotEqual(num_dict_5, dict_5)
         self.assertNotEqual(num_dict_6, dict_6)
 
+        # ...but None keys work just fine
         self.assertEqual(num_dict_7, dict_7)
 
         # Construct dicts from NumDicts
@@ -134,7 +151,7 @@ class NumDictTest(unittest.TestCase):
         dict_4 = {'3': 'Aardvark', '4': 'Ant'}  # Multiple numeric string keys
         dict_5 = {5: 'Cat', '6': 'Dog'}  # Mixed numeric and numeric string keys
         dict_6 = {1: None, '2': None}  # None as values
-        dict_7 = {0: 'Empty'}  # None as key
+        dict_7 = {None: 'Empty'}  # None as key
 
         #  Construct NumDicts from dicts
         num_dict = NumDict()
@@ -149,52 +166,52 @@ class NumDictTest(unittest.TestCase):
 
         reps = (
             "{}",
-            "{1: 'Elephant'}",
-            "{1: 'Elephant', 2: 'Mouse'}",
-            "'3': 'Aardvark'",
-            "{'3': 'Aardvark', '4': 'Ant'}",
-            "{5: 'Cat', '6': 'Dog'}",
+            "{1: u'Elephant'}",
+            "{1: u'Elephant', 2: u'Mouse'}",
+            "'3': u'Aardvark'",
+            "{'3': u'Aardvark', '4': u'Ant'}",
+            "{5: u'Cat', '6': u'Dog'}",
             "{1: None, '2': None}",
-            "{0: 'Empty'}",
+            "{None: u'Empty'}",
         )
 
         # Most representations of NumDicts should compare equal to dicts...
-        self.assertEqual(str(num_dict), str({}))
+        self.assertEqual(six.text_type(num_dict), six.text_type({}))
         self.assertEqual(repr(num_dict), repr({}))
         self.assertIn(repr(num_dict), reps)
 
-        self.assertEqual(str(num_dict_0), str(dict_0))
+        self.assertEqual(six.text_type(num_dict_0), six.text_type(dict_0))
         self.assertEqual(repr(num_dict_0), repr(dict_0))
         self.assertIn(repr(num_dict_0), reps)
 
-        self.assertEqual(str(num_dict_1), str(dict_1))
+        self.assertEqual(six.text_type(num_dict_1), six.text_type(dict_1))
         self.assertEqual(repr(num_dict_1), repr(dict_1))
         self.assertIn(repr(num_dict_1), reps)
 
-        self.assertEqual(str(num_dict_2), str(dict_2))
+        self.assertEqual(six.text_type(num_dict_2), six.text_type(dict_2))
         self.assertEqual(repr(num_dict_2), repr(dict_2))
         self.assertIn(repr(num_dict_2), reps)
 
         # ...however, numeric keys are not equal to numeric string keys...
         # ...so the string representations for those are different...
-        self.assertNotEqual(str(num_dict_3), str(dict_3))
+        self.assertNotEqual(six.text_type(num_dict_3), six.text_type(dict_3))
         self.assertNotEqual(repr(num_dict_3), repr(dict_3))
         self.assertNotIn(repr(num_dict_3), reps)
 
-        self.assertNotEqual(str(num_dict_4), str(dict_4))
+        self.assertNotEqual(six.text_type(num_dict_4), six.text_type(dict_4))
         self.assertNotEqual(repr(num_dict_4), repr(dict_4))
         self.assertNotIn(repr(num_dict_4), reps)
 
-        self.assertNotEqual(str(num_dict_5), str(dict_5))
+        self.assertNotEqual(six.text_type(num_dict_5), six.text_type(dict_5))
         self.assertNotEqual(repr(num_dict_5), repr(dict_5))
         self.assertNotIn(repr(num_dict_5), reps)
 
-        self.assertNotEqual(str(num_dict_6), str(dict_6))
+        self.assertNotEqual(six.text_type(num_dict_6), six.text_type(dict_6))
         self.assertNotEqual(repr(num_dict_6), repr(dict_6))
         self.assertNotIn(repr(num_dict_6), reps)
 
         # ...but None keys work just fine
-        self.assertEqual(str(num_dict_7), str(dict_7))
+        self.assertEqual(six.text_type(num_dict_7), six.text_type(dict_7))
         self.assertEqual(repr(num_dict_7), repr(dict_7))
         self.assertIn(repr(num_dict_7), reps)
 
@@ -315,9 +332,9 @@ class NumDictTest(unittest.TestCase):
         self.assertNotEqual(my_num_dict_a, my_num_dict)
 
         # Test keys, items, values
-        self.assertEqual(sorted(num_dict_2), sorted(dict_2))
-        self.assertEqual(sorted(num_dict_2.items()), sorted(dict_2.items()))
-        self.assertEqual(sorted(num_dict_2.values()), sorted(dict_2.values()))
+        self.assertEqual(sorted(six.iterkeys(num_dict_2)), sorted(six.iterkeys(dict_2)))
+        self.assertEqual(sorted(six.iteritems(num_dict_2)), sorted(six.iteritems(dict_2)))
+        self.assertEqual(sorted(six.itervalues(num_dict_2)), sorted(six.itervalues(dict_2)))
 
         # Test "in".
         for i in num_dict_2:
@@ -356,14 +373,14 @@ class NumDictTest(unittest.TestCase):
         # Test "in" iteration.
         num_dict_2b = num_dict_2
         for i in range(20):
-            num_dict_2[i] = str(i)
-            num_dict_2b[str(i)] = str(i)
+            num_dict_2[i] = six.text_type(i)
+            num_dict_2b[six.text_type(i)] = six.text_type(i)
         self.assertEqual(num_dict_2, num_dict_2b)
 
         ikeys = []
         for k in num_dict_2:
             ikeys.append(k)
-        self.assertEqual(set(ikeys), set(num_dict_2))
+        self.assertEqual(set(ikeys), set(num_dict_2.keys()))
 
         # Test setdefault
         val = 1
@@ -414,7 +431,7 @@ class NumDictTest(unittest.TestCase):
         self.assertEqual(num_dict_d[1], 2)
         self.assertEqual(num_dict_d[3], 4)
         self.assertNotIn(2, num_dict_d)
-        self.assertNotIn(2, num_dict_d)
+        self.assertNotIn(2, num_dict_d.keys())
         self.assertEqual(num_dict_d[2], 42)
 
         class NumDictE(NumDict):
@@ -468,7 +485,7 @@ class NumDictTest(unittest.TestCase):
             """
 
             def __missing__(self, key):
-                return super().__missing__(key) + 1
+                return super(NumDictH, self).__missing__(key) + 1
 
         num_dict_h = NumDictH()
         self.assertEqual(num_dict_h[None], num_dict_d[None] + 1)

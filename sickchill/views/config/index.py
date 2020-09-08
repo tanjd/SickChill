@@ -1,9 +1,32 @@
+# coding=utf-8
+# Author: Nic Wolfe <nic@wolfeden.ca>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import os
 
+# Third Party Imports
 from tornado.web import addslash
 
-from sickchill import settings
-from sickchill.update_manager import UpdateManager
+# First Party Imports
+import sickbeard
+from sickbeard.versionChecker import CheckVersion
 from sickchill.views.common import PageTemplate
 from sickchill.views.index import WebRoot
 from sickchill.views.routes import Route
@@ -12,7 +35,7 @@ from sickchill.views.routes import Route
 @Route('/config(/?.*)', name='config:main')
 class Config(WebRoot):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super(Config, self).__init__(*args, **kwargs)
 
     @staticmethod
     def ConfigMenu():
@@ -32,34 +55,40 @@ class Config(WebRoot):
     @addslash
     def index(self):
         t = PageTemplate(rh=self, filename="config.mako")
+
         try:
-            import getpass
-            sc_user = getpass.getuser()
-        except Exception:
-            sc_user = os.getuid()
+            # noinspection PyUnresolvedReferences
+            import pwd
+            sr_user = pwd.getpwuid(os.getuid()).pw_name
+        except ImportError:
+            try:
+                import getpass
+                sr_user = getpass.getuser()
+            except StandardError:
+                sr_user = 'Unknown'
 
         try:
             import locale
-            sc_locale = locale.getdefaultlocale()
-        except Exception:
-            sc_locale = 'Unknown', 'Unknown'
+            sr_locale = locale.getdefaultlocale()
+        except StandardError:
+            sr_locale = 'Unknown', 'Unknown'
 
         try:
             import ssl
             ssl_version = ssl.OPENSSL_VERSION
-        except Exception:
+        except StandardError:
             ssl_version = 'Unknown'
 
-        sc_version = ''
-        if settings.VERSION_NOTIFY:
-            updater = UpdateManager()
+        sr_version = ''
+        if sickbeard.VERSION_NOTIFY:
+            updater = CheckVersion().updater
             if updater:
                 updater.need_update()
-                sc_version = updater.get_current_version()
+                sr_version = updater.get_cur_version()
 
         return t.render(
             submenu=self.ConfigMenu(), title=_('SickChill Configuration'),
             header=_('SickChill Configuration'), topmenu="config",
-            sc_user=sc_user, sc_locale=sc_locale, ssl_version=ssl_version,
-            sc_version=sc_version
+            sr_user=sr_user, sr_locale=sr_locale, ssl_version=ssl_version,
+            sr_version=sr_version
         )

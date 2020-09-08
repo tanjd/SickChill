@@ -1,8 +1,14 @@
+# coding=utf-8
+
 """
 Episode tagger to extract information from episodes
 """
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import re
 
+# First Party Imports
 from sickchill.helper.common import try_int
 from sickchill.recompiled import tags
 
@@ -11,7 +17,6 @@ class EpisodeTags(object):
     """
     Quality tags
     """
-
     def __init__(self, name):
         self.name = name
         self.rex = {
@@ -35,7 +40,7 @@ class EpisodeTags(object):
             return getattr(self, match_obj)
         except (KeyError, AttributeError):
             regexes = regex or self.rex[attr]
-            if not isinstance(regexes, list):
+            if type(regexes) is not list:
                 regexes = [regexes]
             for regexItem in regexes:
                 result = regexItem.search(self.name, flags)
@@ -269,6 +274,7 @@ class EpisodeTags(object):
             regex = re.compile(r'(RawHD)', re.I)
             match = self._get_match_obj(attr, regex)
         return '' if not match else match.group()
+
 
     @property
     def netflix(self):

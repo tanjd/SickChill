@@ -1,11 +1,44 @@
+#!/usr/bin/env python2.7
+# coding=UTF-8
+# Author: Dennis Lutter <lad1337@gmail.com>
+# URL: https://sickchill.github.io
+#
+# This file is part of SickChill.
+#
+# SickChill is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# SickChill is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with SickChill. If not, see <http://www.gnu.org/licenses/>.
+
+
+"""
+Test searches
+"""
+
+from __future__ import print_function, unicode_literals
+import os.path
+import sys
 import unittest
 
-import sickchill.oldbeard.providers
-from sickchill import settings
-from sickchill.oldbeard import common as common
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '../lib')))
+sys.path.insert(1, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from sickbeard.tv import TVEpisode, TVShow
+import sickbeard
+import sickbeard.common as common
 from sickchill.providers.GenericProvider import GenericProvider
-from sickchill.tv import TVEpisode, TVShow
-from tests import test_lib as test
+import tests.test_lib as test
+
+import six
+
 
 TESTS = {
     "Game of Thrones": {
@@ -16,12 +49,12 @@ TESTS = {
 }
 
 
-class SearchTest(test.SickChillTestDBCase):
+class SearchTest(test.SickbeardTestDBCase):
     """
     Test search
     """
     def __init__(self, something):
-        super().__init__(something)
+        super(SearchTest, self).__init__(something)
 
 
 def generator(cur_data, cur_name, cur_provider):
@@ -34,6 +67,7 @@ def generator(cur_data, cur_name, cur_provider):
     :return:
     """
 
+    # noinspection PyProtectedMember
     def do_test(self):
         """
         Test to perform
@@ -42,7 +76,7 @@ def generator(cur_data, cur_name, cur_provider):
         show.name = cur_name
         show.quality = common.ANY | common.Quality.UNKNOWN | common.Quality.RAWHDTV
         show.saveToDB()
-        settings.showList.append(show)
+        sickbeard.showList.append(show)
 
         for ep_number in cur_data["e"]:
             episode = TVEpisode(show, cur_data["s"], ep_number)
@@ -118,10 +152,10 @@ if __name__ == '__main__':
     print("######################################################################")
     # create the test methods
     for forceSearch in (True, False):
-        for name, data in TESTS.items():
+        for name, data in six.iteritems(TESTS):
             filename = name.replace(' ', '_')
 
-            for provider in sickchill.oldbeard.providers.sortedProviderList():
+            for provider in sickbeard.providers.sortedProviderList():
                 if provider.provider_type == GenericProvider.TORRENT:
                     if forceSearch:
                         test_name = 'test_manual_{0}_{1}_{2}'.format(filename, data["tvdbid"], provider.name)

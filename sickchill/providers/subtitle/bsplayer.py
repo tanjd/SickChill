@@ -1,6 +1,11 @@
+# -*- coding: utf-8 -*-
 """
 Created by Nyaran, based on https://github.com/realgam3/service.subtitles.bsplayer
 """
+
+from __future__ import absolute_import, print_function, unicode_literals
+
+# Stdlib Imports
 import logging
 import os
 import random
@@ -9,10 +14,11 @@ import struct
 import zlib
 from time import sleep
 from xml.etree import ElementTree
-from xmlrpc.client import ServerProxy
 
+# Third Party Imports
 from babelfish import Language, language_converters
 from requests import Session
+from six.moves.xmlrpc_client import ServerProxy
 from subliminal import __short_version__
 from subliminal.providers import Provider, TimeoutSafeTransport
 from subliminal.subtitle import fix_line_ending, Subtitle
@@ -35,16 +41,16 @@ class BSPlayerSubtitle(Subtitle):
     provider_name = 'bsplayer'
     series_re = re.compile(r'^"(?P<series_name>.*)" (?P<series_title>.*)$')
 
-    def __init__(self, subtitle_id, size, page_link, language, filename, subtitle_source, subtitle_hash, rating,
+    def __init__(self, subtitle_id, size, page_link, language, filename, subtitle_format, subtitle_hash, rating,
                  season, episode, encoding, imdb_id, imdb_rating, movie_year, movie_name, movie_hash, movie_size,
                  movie_fps):
-        super().__init__(language, page_link=page_link, encoding=encoding)
+        super(BSPlayerSubtitle, self).__init__(language, page_link=page_link, encoding=encoding)
         self.subtitle_id = subtitle_id
         self.size = size
         self.page_link = page_link
         self.language = language
         self.filename = filename
-        self.source = subtitle_source
+        self.format = subtitle_format
         self.hash = subtitle_hash
         self.rating = rating
         self.season = season
@@ -108,10 +114,10 @@ class BSPlayerProvider(Provider):
             '<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" '
             'xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" '
             'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
-            f'xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:ns1="{self.search_url}">'
+            'xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:ns1="{search_url}">'
             '<SOAP-ENV:Body SOAP-ENV:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">'
-            f'<ns1:{func_name}>{params}</ns1:{func_name}></SOAP-ENV:Body></SOAP-ENV:Envelope>'
-        )
+            '<ns1:{func_name}>{params}</ns1:{func_name}></SOAP-ENV:Body></SOAP-ENV:Envelope>'
+        ).format(search_url=self.search_url, func_name=func_name, params=params)
 
         for i in range(tries):
             try:
@@ -138,14 +144,14 @@ class BSPlayerProvider(Provider):
     def terminate(self):
         root = self._api_request(
             func_name='logOut',
-            params=f'<handle>{self.token}</handle>'
+            params='<handle>{token}</handle>'.format(token=self.token)
         )
         res = root.find('.//return')
         if res.find('status').text != 'OK':
             logger.error('[BSPlayer] ERROR: Unable to close session.')
         self.token = None
 
-    def query(self, languages, name_hash=None, size=None):
+    def query(self, languages, hash=None, size=None):
         # fill the search criteria
         root = self._api_request(
             func_name='searchSubtitles',
@@ -155,8 +161,8 @@ class BSPlayerProvider(Provider):
                 '<movieSize>{movie_size}</movieSize>'
                 '<languageId>{language_ids}</languageId>'
                 '<imdbId>*</imdbId>'
-            ).format(token=self.token, movie_hash=name_hash,
-                     movie_size=size, language_ids=','.join([l.alpha3 for l in languages]))
+            ).format(token=self.token, movie_hash=hash,
+                     movie_size=size, language_ids=','.join(map(lambda l: l.alpha3, languages)))
         )
         res = root.find('.//return/result')
         if res.find('status').text != 'OK':
@@ -171,7 +177,7 @@ class BSPlayerProvider(Provider):
                 download_link = item.find('subDownloadLink').text
                 language = Language.fromalpha3b(item.find('subLang').text)
                 filename = item.find('subName').text
-                subtitle_source = item.find('subFormat').text
+                subtitle_format = item.find('subFormat').text
                 subtitle_hash = item.find('subHash').text
                 rating = item.find('subRating').text
                 season = item.find('season').text
@@ -185,7 +191,7 @@ class BSPlayerProvider(Provider):
                 movie_size = item.find('movieSize').text
                 movie_fps = item.find('movieFPS').text
 
-                subtitle = BSPlayerSubtitle(subtitle_id, size, download_link, language, filename, subtitle_source,
+                subtitle = BSPlayerSubtitle(subtitle_id, size, download_link, language, filename, subtitle_format,
                                             subtitle_hash, rating, season, episode, encoding, imdb_id, imdb_rating,
                                             movie_year, movie_name, movie_hash, movie_size, movie_fps)
                 logger.debug('Found subtitle %s', subtitle)
@@ -195,7 +201,7 @@ class BSPlayerProvider(Provider):
         return subtitles
 
     def list_subtitles(self, video, languages):
-        return self.query(languages, name_hash=self.hash_bsplayer(video.name), size=video.size)
+        return self.query(languages, hash=self.hash_bsplayer(video.name), size=video.size)
 
     def download_subtitle(self, subtitle):
         logger.info('Downloading subtitle %r', subtitle)
@@ -208,11 +214,10 @@ class BSPlayerProvider(Provider):
 
         subtitle.content = fix_line_ending(zlib.decompress(response.content, 47))
 
-    @staticmethod
-    def hash_bsplayer(video_path):
+    def hash_bsplayer(self, video_path):
         """Compute a hash using BSPlayer's algorithm.
         :param str video_path: path of the video.
-        :return: the name_hash.
+        :return: the hash.
         :rtype: str
         """
         little_endian_long_long = '<q'  # little-endian long long
